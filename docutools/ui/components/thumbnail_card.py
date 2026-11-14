@@ -27,28 +27,33 @@ class ThumbnailCard(QFrame):
     delete_requested = Signal(int)         # (page_index)
     move_left_requested = Signal(int)      # (page_index)
     move_right_requested = Signal(int)     # (page_index)
+    inspect_requested = Signal(int)        # (page_index)
 
     def __init__(
         self,
         page_index: int,
         page_number: int,
         pixmap_bytes: bytes,
+        card_width: int = 180,
+        card_height: int = 255,
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
         self.page_index = page_index
         self.page_number = page_number
-        self.setFixedSize(170, 240)
+        self.card_width = card_width
+        self.card_height = card_height
+        self.setFixedSize(card_width, card_height)
         self.setProperty("class", "cardFrame")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
 
-        # Top bar: Checkbox + Page Badge
+        # Top bar: Checkbox + Page Badge + Inspect + Rotate + Delete
         top_bar = QHBoxLayout()
         top_bar.setContentsMargins(2, 2, 2, 2)
-        top_bar.setSpacing(4)
+        top_bar.setSpacing(3)
 
         self.chk_select = QCheckBox()
         self.chk_select.setToolTip("Select page for extraction/deletion")
@@ -60,6 +65,14 @@ class ThumbnailCard(QFrame):
         top_bar.addWidget(self.lbl_page)
 
         top_bar.addStretch()
+
+        # Inspect button (Large view)
+        self.btn_inspect = QPushButton("🔍")
+        self.btn_inspect.setFixedSize(20, 20)
+        self.btn_inspect.setToolTip("View page in large inspection window")
+        self.btn_inspect.setStyleSheet("padding: 0; font-size: 11px;")
+        self.btn_inspect.clicked.connect(lambda: self.inspect_requested.emit(self.page_index))
+        top_bar.addWidget(self.btn_inspect)
 
         # Rotate button
         self.btn_rotate = QPushButton("⟳")
@@ -82,6 +95,8 @@ class ThumbnailCard(QFrame):
         # Thumbnail Image Display
         self.lbl_image = QLabel()
         self.lbl_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_image.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lbl_image.setToolTip("Double-click or click 🔍 to view in large mode")
         self.lbl_image.setStyleSheet("background-color: #111215; border-radius: 4px; border: 1px solid #282a30;")
         self.set_pixmap(pixmap_bytes)
         layout.addWidget(self.lbl_image, stretch=1)
@@ -109,10 +124,16 @@ class ThumbnailCard(QFrame):
 
         layout.addLayout(bot_bar)
 
+    def mouseDoubleClickEvent(self, event) -> None:
+        self.inspect_requested.emit(self.page_index)
+        super().mouseDoubleClickEvent(event)
+
     def set_pixmap(self, pixmap_bytes: bytes) -> None:
         px = QPixmap()
         px.loadFromData(pixmap_bytes)
-        scaled = px.scaled(150, 175, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        img_w = max(self.card_width - 24, 120)
+        img_h = max(self.card_height - 75, 140)
+        scaled = px.scaled(img_w, img_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.lbl_image.setPixmap(scaled)
 
     def is_selected(self) -> bool:
