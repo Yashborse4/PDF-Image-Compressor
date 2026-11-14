@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+
+# Build / packaging output
+build/
+dist/
+vendor/
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Sample PDFs: track only sanitised samples
+samples/*
+!samples/sample_quote.pdf
+!samples/sample_cad_drawing.pdf
+!samples/sample_invoice_ocr.pdf
+!samples/document_with_hyperlink.pdf
+
+# IDE and OS cruft
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
