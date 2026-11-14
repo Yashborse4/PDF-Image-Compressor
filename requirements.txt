@@ -1,0 +1,17 @@
+# DocuTools Core Dependencies - Tested Pinned Versions (Python 3.12 & 3.13)
+PySide6>=6.11.0,<6.13.0
+pypdf>=7.0.0
+pikepdf>=10.0.0
+Pillow>=11.0.0
+python-docx>=1.1.0
+PyMuPDF>=1.26.0,<1.29.0
+QtAwesome>=1.4.0
+qt-material>=2.17
+cryptography>=49.0.0
+pyHanko[image-support]>=0.35.0
+pytesseract>=0.3.13
+
+# Development, Testing & Packaging
+pytest>=9.0.0
+pytest-mock>=3.14.0
+pyinstaller>=6.10.0
