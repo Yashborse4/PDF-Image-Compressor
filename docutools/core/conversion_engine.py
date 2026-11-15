@@ -28,11 +28,11 @@ class ConversionEngine:
         pdf_path: str | Path,
         output_dir: str | Path,
         image_format: str = "PNG",  # PNG, JPEG, WEBP
-        dpi: int = 200,
+        dpi: int = 300,
         page_indices: Optional[Sequence[int]] = None,
         progress_callback: Optional[Callable[[int, str], None]] = None
     ) -> List[str]:
-        """Convert PDF pages to image files."""
+        """Convert PDF pages to lossless/high-fidelity image files."""
         src_p = Path(pdf_path)
         out_d = Path(output_dir)
         out_d.mkdir(parents=True, exist_ok=True)
@@ -57,7 +57,10 @@ class ConversionEngine:
                 page = doc[p_idx]
                 pix = page.get_pixmap(matrix=matrix, alpha=(ext == "png"))
                 out_file = out_d / f"{src_p.stem}_page_{p_idx+1:03d}.{ext}"
-                pix.save(str(out_file))
+                if ext == "jpg":
+                    pix.save(str(out_file), jpg_quality=100)
+                else:
+                    pix.save(str(out_file))
                 generated_files.append(str(out_file))
 
         doc.close()
@@ -69,7 +72,7 @@ class ConversionEngine:
         output_pdf_path: str | Path,
         progress_callback: Optional[Callable[[int, str], None]] = None
     ) -> str:
-        """Combine multiple images into a single PDF document."""
+        """Combine multiple images into a single PDF document without loss of pixel quality."""
         out_p = Path(output_pdf_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
@@ -85,15 +88,22 @@ class ConversionEngine:
             with Image.open(p) as pil_img:
                 w, h = pil_img.size
 
-            # Create PDF page with image dimensions
+            # Create PDF page with exact image pixel dimensions
             rect = fitz.Rect(0, 0, w, h)
             page = doc.new_page(width=w, height=h)
-            page.insert_image(rect, filename=str(p))
+            page.insert_image(rect, filename=str(p), keep_proportion=True)
 
         if progress_callback:
             progress_callback(95, "Saving consolidated PDF...")
 
-        doc.save(str(out_p), garbage=3, deflate=True)
+        doc.save(
+            str(out_p),
+            garbage=3,
+            deflate=True,
+            deflate_images=False,
+            deflate_fonts=False,
+            clean=False
+        )
         doc.close()
 
         if progress_callback:
@@ -185,6 +195,14 @@ class ConversionEngine:
             if fmt == "JPG":
                 fmt = "JPEG"
 
+            save_kwargs: Dict[str, Any] = {}
+            if fmt == "JPEG":
+                save_kwargs = {"quality": 100, "subsampling": 0}
+            elif fmt == "WEBP":
+                save_kwargs = {"lossless": True, "quality": 100}
+            elif fmt == "PNG":
+                save_kwargs = {"compress_level": 6}
+
             if fmt == "JPEG" and img.mode in ("RGBA", "LA", "P"):
                 bg = Image.new("RGB", img.size, (255, 255, 255))
                 if img.mode == "P":
@@ -192,6 +210,6 @@ class ConversionEngine:
                 bg.paste(img, mask=img.split()[-1] if "A" in img.mode else None)
                 img = bg
 
-            img.save(str(out_p), format=fmt)
+            img.save(str(out_p), format=fmt, **save_kwargs)
 
         return str(out_p)

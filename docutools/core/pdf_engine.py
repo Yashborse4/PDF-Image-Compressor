@@ -93,6 +93,160 @@ class PDFEngine:
         return png_data
 
     @staticmethod
+    def assemble_pdf(
+        pages_spec: Sequence[Dict[str, Any]],
+        output_path: str | Path,
+        compress: bool = False,
+        compress_profile: str = "medium",
+        user_password: Optional[str] = None,
+        owner_password: Optional[str] = None,
+        allow_printing: bool = True,
+        allow_copying: bool = True,
+        watermark_text: Optional[str] = None,
+        watermark_opacity: float = 0.3,
+        watermark_size: int = 40,
+        progress_callback: Optional[Callable[[int, str], None]] = None
+    ) -> Dict[str, Any]:
+        """
+        Assemble a new PDF from a custom sequence of pages (from single or multiple source PDFs),
+        applying page order, rotations, optional watermark, optional compression, and optional password encryption.
+        pages_spec: list of dicts with keys:
+            - source_file: str | Path
+            - orig_index: int
+            - rotation: int (optional, degrees clockwise 0, 90, 180, 270)
+        """
+        if not pages_spec:
+            raise ValueError("No pages specified to assemble.")
+
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        total_pages = len(pages_spec)
+
+        import tempfile
+        import shutil
+
+        # Step 1: Assemble pages into PyMuPDF doc
+        out_doc = fitz.open()
+        open_docs: Dict[str, fitz.Document] = {}
+
+        try:
+            for idx, spec in enumerate(pages_spec):
+                if progress_callback:
+                    pct = int(((idx + 1) / max(total_pages, 1)) * 40)
+                    progress_callback(pct, f"Assembling page {idx + 1} of {total_pages}...")
+
+                src_str = str(spec["source_file"])
+                if src_str not in open_docs:
+                    open_docs[src_str] = fitz.open(src_str)
+
+                src_doc = open_docs[src_str]
+                orig_idx = int(spec["orig_index"])
+                rotation = int(spec.get("rotation", 0)) % 360
+
+                out_doc.insert_pdf(src_doc, from_page=orig_idx, to_page=orig_idx)
+                inserted_page = out_doc[-1]
+
+                if rotation != 0:
+                    inserted_page.set_rotation((inserted_page.rotation + rotation) % 360)
+
+                if watermark_text and watermark_text.strip():
+                    rect = inserted_page.rect
+                    pt = fitz.Point(rect.width * 0.2, rect.height * 0.5)
+                    inserted_page.insert_text(
+                        pt,
+                        watermark_text.strip(),
+                        fontsize=watermark_size,
+                        color=(0.6, 0.6, 0.6),
+                        fill_opacity=watermark_opacity
+                    )
+        finally:
+            for d in open_docs.values():
+                d.close()
+
+        # Step 2: Handle intermediate saves / compression / protection
+        temp_files: List[str] = []
+        try:
+            if not compress and not user_password and not owner_password:
+                if progress_callback:
+                    progress_callback(90, "Writing final PDF...")
+                out_doc.save(
+                    str(out_p),
+                    garbage=3,
+                    deflate=True,
+                    deflate_images=False,
+                    deflate_fonts=False,
+                    clean=False,
+                    preserve_metadata=True
+                )
+                out_doc.close()
+                current_file = str(out_p)
+            else:
+                tf_stage1 = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                tf_stage1.close()
+                temp_files.append(tf_stage1.name)
+
+                if progress_callback:
+                    progress_callback(50, "Saving base assembled PDF...")
+                out_doc.save(
+                    tf_stage1.name,
+                    garbage=3,
+                    deflate=True,
+                    deflate_images=False,
+                    deflate_fonts=False,
+                    clean=False,
+                    preserve_metadata=True
+                )
+                out_doc.close()
+                current_file = tf_stage1.name
+
+                # Compression step
+                if compress:
+                    if progress_callback:
+                        progress_callback(65, "Compressing PDF streams and embedded media...")
+                    tf_stage2 = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                    tf_stage2.close()
+                    temp_files.append(tf_stage2.name)
+                    PDFEngine.compress_pdf(current_file, tf_stage2.name, quality_level=compress_profile)
+                    current_file = tf_stage2.name
+
+                # Encryption step
+                if user_password or owner_password:
+                    if progress_callback:
+                        progress_callback(85, "Applying AES-256 encryption & security permissions...")
+                    PDFEngine.protect_pdf(
+                        file_path=current_file,
+                        output_path=out_p,
+                        user_password=user_password or "",
+                        owner_password=owner_password or user_password or "",
+                        allow_printing=allow_printing,
+                        allow_copying=allow_copying
+                    )
+                else:
+                    if progress_callback:
+                        progress_callback(90, "Writing final PDF...")
+                    shutil.move(current_file, str(out_p))
+        finally:
+            for tf in temp_files:
+                if os.path.exists(tf):
+                    try:
+                        os.remove(tf)
+                    except Exception:
+                        pass
+
+        if progress_callback:
+            progress_callback(100, "Assembly complete!")
+
+        final_size = out_p.stat().st_size if out_p.exists() else 0
+        return {
+            "output_file": str(out_p),
+            "pages_count": total_pages,
+            "file_size": final_size,
+            "compressed": compress,
+            "protected": bool(user_password),
+            "watermarked": bool(watermark_text),
+        }
+
+    @staticmethod
     def merge_pdfs(
         source_files: Sequence[str | Path],
         output_path: str | Path,
@@ -464,7 +618,7 @@ class PDFEngine:
                 if annotation_type == "watermark":
                     # Center diagonal watermark
                     pt = fitz.Point(rect.width * 0.25, rect.height * 0.55)
-                    page.insert_text(pt, text, fontsize=font_size, rotate=45, color=color_rgb, fill_opacity=opacity)
+                    page.insert_text(pt, text, fontsize=font_size, color=color_rgb, fill_opacity=opacity)
                 elif annotation_type == "header":
                     # Top header
                     pt = fitz.Point(rect.width * 0.5 - (len(text) * font_size * 0.25), 36)
@@ -507,7 +661,6 @@ class PDFEngine:
                 p,
                 watermark_text,
                 fontsize=font_size,
-                rotate=45,
                 color=color,
                 fill_opacity=opacity,
             )

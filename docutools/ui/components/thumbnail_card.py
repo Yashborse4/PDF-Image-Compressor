@@ -36,6 +36,8 @@ class ThumbnailCard(QFrame):
         pixmap_bytes: bytes,
         card_width: int = 180,
         card_height: int = 255,
+        doc_label: str = "",
+        doc_color: str = "#60a5fa",
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
@@ -43,6 +45,8 @@ class ThumbnailCard(QFrame):
         self.page_number = page_number
         self.card_width = card_width
         self.card_height = card_height
+        self.doc_label = doc_label
+        self.doc_color = doc_color
         self.setFixedSize(card_width, card_height)
         self.setProperty("class", "cardFrame")
 
@@ -50,17 +54,28 @@ class ThumbnailCard(QFrame):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
 
-        # Top bar: Checkbox + Page Badge + Inspect + Rotate + Delete
+        # Top bar: Checkbox + Doc Badge + Page Badge + Inspect + Rotate + Delete
         top_bar = QHBoxLayout()
         top_bar.setContentsMargins(2, 2, 2, 2)
         top_bar.setSpacing(3)
 
         self.chk_select = QCheckBox()
-        self.chk_select.setToolTip("Select page for extraction/deletion")
+        self.chk_select.setToolTip("Select page for bulk removal, extraction or actions")
         self.chk_select.toggled.connect(lambda checked: self.selection_changed.emit(self.page_index, checked))
         top_bar.addWidget(self.chk_select)
 
-        self.lbl_page = QLabel(f"Page {page_number}")
+        if doc_label:
+            self.lbl_doc = QLabel(doc_label)
+            self.lbl_doc.setStyleSheet(
+                f"background-color: {doc_color}22; color: {doc_color}; border: 1px solid {doc_color}66; "
+                "font-weight: 700; font-size: 10px; border-radius: 3px; padding: 1px 4px;"
+            )
+            self.lbl_doc.setToolTip(f"Source: {doc_label}")
+            top_bar.addWidget(self.lbl_doc)
+            self.lbl_page = QLabel(f"P{page_number}")
+        else:
+            self.lbl_page = QLabel(f"Page {page_number}")
+
         self.lbl_page.setStyleSheet("font-weight: 600; font-size: 11px; color: #93c5fd;")
         top_bar.addWidget(self.lbl_page)
 

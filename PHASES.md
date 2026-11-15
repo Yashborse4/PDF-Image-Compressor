@@ -39,6 +39,17 @@ gantt
 
 ### Phase 2 – PDF Tools 🟢 [COMPLETED]
 - [x] **Visual Page Organizer**: Multi-threaded page thumbnail grid with page numbering (`ThumbnailCard`).
+- [x] **High-Resolution Page Inspector & Viewer (`PagePreviewDialog`)**:
+  - High-visibility vector page rendering via PyMuPDF with responsive zoom ($40\% \text{ to } 350\%$), "Fit Width", "Fit Page", and 100% reset.
+  - Page navigation controls (`◀ Prev Page`, `Page SpinBox of N`, `Next Page ▶`).
+  - Keyboard shortcuts (Left/Right arrows, PageUp/PageDown, Space to toggle selection, Ctrl+Plus/Minus zoom, Escape to close).
+  - Page rotation directly within the inspector (`⟳ Rotate 90°`).
+  - **"Select All Pages" & "Deselect All" Controls**: Prominent buttons inside the inspection window to select or deselect all pages with live selection badge counter.
+  - **Direct Extraction**: Extract selected pages directly from within the large preview window.
+  - Bidirectional real-time synchronization between the preview window and the page organizer cards.
+- [x] **Adjustable Thumbnail Grid Sizing**:
+  - Dynamically switch between Normal ($180\text{px}$), Large ($240\text{px}$), and Extra Large ($310\text{px}$) cards directly in the Page Organizer toolbar.
+  - Dedicated `🔍` button and double-click trigger on every thumbnail card to launch the large inspector.
 - [x] **Page Reordering & Rotation**: Drag/button-based page order manipulation and 90° clockwise rotations.
 - [x] **Selective Page Extraction**: Checkbox-based selection to extract custom pages to a new document.
 - [x] **PDF Merge**: Combine multiple PDF documents with order sorting (Move Up / Down).
@@ -97,9 +108,9 @@ gantt
 
 ### Phase 6 – Windows Deployment 🟢 [CONFIGURED & READY]
 - [x] **Standalone Executable Script**: Automated PowerShell build script (`scripts/build_docutools.ps1`) using PyInstaller / `pyside6-deploy`.
-- [x] **Application Metadata**: Desktop branding, versioning (`1.0.0`), and icons.
+- [x] **Application Metadata**: Desktop branding, unified application icon (no lightning symbols), and clean UI without version numbers.
 - [x] **Windows Installer Configuration**: Production Inno Setup script (`installer/docutools.iss`) with desktop shortcut creation and uninstall support.
-- [x] **Automated Test Suite**: 21 unit tests covering all headless engines with 100% pass rate (`pytest`).
+- [x] **Automated Test Suite**: 51 unit tests covering all headless engines, All-in-One Studio, lossless multi-generation cycles, and UI inspection tools with 100% pass rate (`pytest`).
 
 ---
 
@@ -109,9 +120,13 @@ gantt
 | :--- | :--- | :---: | :---: |
 | **App Icon & Branding** | [`assets.py`](file:///E:/PDF%20Merger/docutools/core/assets.py) | 3 / 3 | ✅ Verified |
 | **Database & SQLite** | [`database.py`](file:///E:/PDF%20Merger/docutools/core/database.py) | 3 / 3 | ✅ Verified |
-| **PDF Processing Engine** | [`pdf_engine.py`](file:///E:/PDF%20Merger/docutools/core/pdf_engine.py) | 10 / 10 | ✅ Verified |
+| **PDF Processing & Assembly Engine** | [`pdf_engine.py`](file:///E:/PDF%20Merger/docutools/core/pdf_engine.py) | 10 / 10 | ✅ Verified |
+| **All-in-One Studio & Lossless Multi-Cycle** | [`pdf_manager_view.py`](file:///E:/PDF%20Merger/docutools/ui/views/pdf_manager_view.py) | 4 / 4 | ✅ Verified |
+| **Large Page Inspector & Viewer** | [`page_preview_dialog.py`](file:///E:/PDF%20Merger/docutools/ui/components/page_preview_dialog.py) | 5 / 5 | ✅ Verified |
 | **Image Engine & Optimizer** | [`image_engine.py`](file:///E:/PDF%20Merger/docutools/core/image_engine.py) | 4 / 4 | ✅ Verified |
 | **Document Engine (DOCX)** | [`docx_engine.py`](file:///E:/PDF%20Merger/docutools/core/docx_engine.py) | 2 / 2 | ✅ Verified |
 | **Conversion Pipeline** | [`conversion_engine.py`](file:///E:/PDF%20Merger/docutools/core/conversion_engine.py) | 4 / 4 | ✅ Verified |
+| **Phase 1 Core Infrastructure** | [`test_phase1_core.py`](file:///E:/PDF%20Merger/tests/test_phase1_core.py) | 11 / 11 | ✅ Verified |
+| **Phase 1 UI Cleanliness** | [`test_phase1_ui.py`](file:///E:/PDF%20Merger/tests/test_phase1_ui.py) | 5 / 5 | ✅ Verified |
 | **GUI & 8-View Shell** | [`main_window.py`](file:///E:/PDF%20Merger/docutools/main_window.py) | GUI Instantiated | ✅ Verified |
-| **Total** | | **26 / 26** | **100% Passed** |
+| **Total** | | **51 / 51** | **100% Passed** |
