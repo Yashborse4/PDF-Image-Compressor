@@ -2,7 +2,7 @@
 #define MyAppName "DocuTools"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "DocuTools"
-#define MyAppURL "https://github.com/DocuTools/DocuTools"
+#define MyAppURL "https://github.com/Yashborse4/PDF-Image-Compressor"
 #define MyAppExeName "DocuTools.exe"
 
 [Setup]
