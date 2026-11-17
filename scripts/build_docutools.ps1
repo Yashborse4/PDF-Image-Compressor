@@ -28,6 +28,13 @@ python -m PyInstaller `
     --icon "docutools/assets/icon.ico" `
     --add-data "docutools/assets;docutools/assets" `
     --add-data "docutools/ui/styles.py;docutools/ui" `
+    --exclude-module scipy `
+    --exclude-module pandas `
+    --exclude-module sklearn `
+    --exclude-module nltk `
+    --exclude-module flask `
+    --exclude-module matplotlib `
+    --exclude-module openpyxl `
     run.py
 
 if ($LASTEXITCODE -ne 0) {
