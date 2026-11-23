@@ -36,6 +36,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -44,6 +46,7 @@ from PySide6.QtWidgets import (
 from docutools.core.database import Database
 from docutools.core.pdf_engine import PDFEngine
 from docutools.core.validator import format_file_size, validate_file
+from docutools.ui.components.digital_signature_dialog import DigitalSignatureDialog
 from docutools.ui.components.drop_zone import DropZone
 from docutools.ui.components.page_preview_dialog import PagePreviewDialog
 from docutools.ui.components.progress_card import ProgressCard
@@ -81,6 +84,9 @@ class PDFManagerView(QWidget):
             return self.loaded_documents[0]["file_path"]
         return None
 
+    def _get_first_doc_path(self) -> Optional[str]:
+        return self.current_pdf_path
+
     def _init_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(18, 16, 18, 16)
@@ -116,16 +122,19 @@ class PDFManagerView(QWidget):
         self.tab_studio = QWidget()
         self.tab_editor = QWidget()
         self.tab_split = QWidget()
+        self.tab_sign = QWidget()
 
         self.tabs.addTab(self.tab_studio, "📑 All-in-One Studio")
         self.tabs.addTab(self.tab_editor, "✏️ In-Place Content Editor")
         self.tabs.addTab(self.tab_split, "✂️ Split Document")
+        self.tabs.addTab(self.tab_sign, "🔏 Digital Signing & Verification")
 
         main_layout.addWidget(self.tabs, stretch=1)
 
         self._build_studio_tab()
         self._build_editor_tab()
         self._build_split_tab()
+        self._build_signing_tab()
 
     # =========================================================================
     # TAB 1: ALL-IN-ONE SINGLE-WINDOW PDF STUDIO
@@ -223,6 +232,15 @@ class PDFManagerView(QWidget):
         )
         self.btn_inspect_large.clicked.connect(lambda: self._open_large_preview(0))
         tb_layout.addWidget(self.btn_inspect_large)
+
+        # Digital Signature Suite
+        self.btn_digital_sign = QPushButton("🔏 Digital Signature...")
+        self.btn_digital_sign.setToolTip("Open cryptographic digital signature & verification suite")
+        self.btn_digital_sign.setStyleSheet(
+            "font-weight: 600; padding: 4px 10px; background-color: #065f46; border: 1px solid #059669; border-radius: 4px; color: #ffffff;"
+        )
+        self.btn_digital_sign.clicked.connect(self._open_digital_signature_suite)
+        tb_layout.addWidget(self.btn_digital_sign)
 
         tb_layout.addStretch()
 
@@ -383,6 +401,60 @@ class PDFManagerView(QWidget):
             row_tags.addWidget(btn_t)
         lay_wm.addLayout(row_tags)
         panel_layout.addWidget(grp_wm)
+
+        # Option: Digital Signature
+        grp_sign = QGroupBox("🔏 Digital Signature (PAdES / PKCS#7)")
+        grp_sign.setStyleSheet("font-weight: 600; color: #cbd5e1;")
+        lay_sign = QVBoxLayout(grp_sign)
+        lay_sign.setSpacing(6)
+        self.chk_sign = QCheckBox("Digitally Sign Output Document")
+        self.chk_sign.setToolTip("Apply tamper-evident cryptographic digital signature with X.509 certificate")
+        lay_sign.addWidget(self.chk_sign)
+
+        self.frame_sign_opts = QFrame()
+        lay_so = QVBoxLayout(self.frame_sign_opts)
+        lay_so.setContentsMargins(0, 0, 0, 0)
+        lay_so.setSpacing(6)
+
+        row_c = QHBoxLayout()
+        self.txt_sign_cert = QLineEdit()
+        self.txt_sign_cert.setPlaceholderText("Path to .p12/.pfx certificate...")
+        saved_c = self.db.get_setting("last_signing_cert", "")
+        if saved_c and Path(saved_c).is_file():
+            self.txt_sign_cert.setText(saved_c)
+        row_c.addWidget(self.txt_sign_cert, stretch=1)
+        btn_browse_c = QPushButton("Browse...")
+        btn_browse_c.clicked.connect(self._browse_signing_cert)
+        row_c.addWidget(btn_browse_c)
+        lay_so.addLayout(row_c)
+
+        self.txt_sign_pwd = QLineEdit()
+        self.txt_sign_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_sign_pwd.setPlaceholderText("Certificate password")
+        lay_so.addWidget(self.txt_sign_pwd)
+
+        self.txt_sign_reason = QLineEdit("Approved")
+        self.txt_sign_reason.setPlaceholderText("Signing reason (optional)")
+        lay_so.addWidget(self.txt_sign_reason)
+
+        self.txt_sign_loc = QLineEdit()
+        self.txt_sign_loc.setPlaceholderText("Location (optional)")
+        lay_so.addWidget(self.txt_sign_loc)
+
+        self.chk_sign_visible = QCheckBox("Include Visual Signature Stamp")
+        self.chk_sign_visible.setChecked(True)
+        lay_so.addWidget(self.chk_sign_visible)
+
+        btn_create_cert_link = QPushButton("🔑 Create Test Certificate...")
+        btn_create_cert_link.setStyleSheet("font-size: 11px; color: #34d399; text-align: left; background: transparent; border: none; padding: 2px 0;")
+        btn_create_cert_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_create_cert_link.clicked.connect(self._open_create_cert_dialog)
+        lay_so.addWidget(btn_create_cert_link)
+
+        self.frame_sign_opts.hide()
+        self.chk_sign.toggled.connect(self.frame_sign_opts.setVisible)
+        lay_sign.addWidget(self.frame_sign_opts)
+        panel_layout.addWidget(grp_sign)
 
         # Split shortcuts
         grp_split_quick = QGroupBox("✂️ Split Options")
@@ -1015,6 +1087,27 @@ class PDFManagerView(QWidget):
         user_pwd = self.txt_protect_pwd.text().strip() if self.chk_protect.isChecked() else None
         wm_text = self.txt_watermark.text().strip() if self.chk_watermark.isChecked() else None
 
+        sign_cert = self.txt_sign_cert.text().strip() if self.chk_sign.isChecked() else None
+        sign_pwd = self.txt_sign_pwd.text() if self.chk_sign.isChecked() else None
+        sign_reason = self.txt_sign_reason.text().strip() if self.chk_sign.isChecked() else None
+        sign_loc = self.txt_sign_loc.text().strip() if self.chk_sign.isChecked() else None
+        sign_vis = self.chk_sign_visible.isChecked() if self.chk_sign.isChecked() else False
+
+        if self.chk_sign.isChecked() and not sign_cert:
+            QMessageBox.warning(
+                self, "Missing Certificate",
+                "Please provide a valid signing certificate (.p12/.pfx) or uncheck 'Digitally Sign Output Document'."
+            )
+            return
+
+        if self.chk_sign.isChecked() and self.chk_protect.isChecked():
+            QMessageBox.warning(
+                self, "Conflicting Security Options",
+                "Cannot apply digital signature and AES-256 password encryption simultaneously.\n"
+                "Digital signatures require unencrypted content to maintain cryptographic integrity."
+            )
+            return
+
         self.progress_card.start_task("Assembling and Readying Final PDF...")
 
         worker = TaskWorker(
@@ -1027,6 +1120,11 @@ class PDFManagerView(QWidget):
             allow_printing=self.chk_allow_print.isChecked(),
             allow_copying=self.chk_allow_copy.isChecked(),
             watermark_text=wm_text,
+            sign_certificate_path=sign_cert,
+            sign_password=sign_pwd,
+            sign_reason=sign_reason,
+            sign_location=sign_loc,
+            sign_visible=sign_vis,
         )
         worker.signals.progress.connect(self.progress_card.update_progress)
         worker.signals.finished.connect(self._on_assembly_finished)
@@ -1039,14 +1137,16 @@ class PDFManagerView(QWidget):
         size_str = format_file_size(result["file_size"])
 
         self.db.add_recent_file(out_file, file_type="pdf")
+        is_signed = result.get("signed", False)
         self.db.add_history(
             operation="Ready PDF Export",
             source_file=Path(self.loaded_documents[0]["file_path"]).name if self.loaded_documents else "Multi-PDF",
             output_file=out_file,
-            details=f"Exported {pages_count} pages (Size: {size_str}, Compressed: {result['compressed']}, Protected: {result['protected']})"
+            details=f"Exported {pages_count} pages (Size: {size_str}, Compressed: {result['compressed']}, Protected: {result['protected']}, Signed: {is_signed})"
         )
 
-        msg = f"Ready PDF successfully exported!\n\nPages: {pages_count}\nOutput Size: {size_str}\nPath: {out_file}"
+        signed_note = "\n🔏 Cryptographically digitally signed (PAdES)." if is_signed else ""
+        msg = f"Ready PDF successfully exported!{signed_note}\n\nPages: {pages_count}\nOutput Size: {size_str}\nPath: {out_file}"
         self._on_operation_done("PDF Ready", msg, out_file)
 
     def _quick_split_ranges(self) -> None:
@@ -1285,3 +1385,320 @@ class PDFManagerView(QWidget):
     def _on_worker_error(self, title: str, error_msg: str) -> None:
         self.progress_card.fail_task(error_msg)
         QMessageBox.critical(self, title, f"An error occurred during processing:\n\n{error_msg}")
+
+    # =========================================================================
+    # TAB 4: DIGITAL SIGNING & VERIFICATION SUITE
+    # =========================================================================
+    def _build_signing_tab(self) -> None:
+        layout = QVBoxLayout(self.tab_sign)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        # Header card
+        header_card = QFrame()
+        header_card.setProperty("class", "cardFrame")
+        header_card.setStyleSheet("""
+            QFrame {
+                background-color: #151821;
+                border: 1px solid #1e293b;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        h_lay = QHBoxLayout(header_card)
+        h_text = QVBoxLayout()
+        lbl_t = QLabel("🔏 Cryptographic PDF Digital Signatures & Validation")
+        lbl_t.setStyleSheet("font-size: 15px; font-weight: bold; color: #60a5fa;")
+        lbl_d = QLabel("Verify PAdES / PKCS#7 signatures, detect document modifications, and sign files with X.509 certificates.")
+        lbl_d.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        h_text.addWidget(lbl_t)
+        h_text.addWidget(lbl_d)
+        h_lay.addLayout(h_text, stretch=1)
+
+        btn_open_full_suite = QPushButton("🚀 Open Full Signature Center...")
+        btn_open_full_suite.setProperty("class", "primaryButton")
+        btn_open_full_suite.setStyleSheet(
+            "background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
+        )
+        btn_open_full_suite.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_open_full_suite.clicked.connect(self._open_digital_signature_suite)
+        h_lay.addWidget(btn_open_full_suite)
+        layout.addWidget(header_card)
+
+        # Splitter for Verifier (Left) and Signer (Right)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # --- Left: Quick Signature Verifier ---
+        pane_verify = QFrame()
+        pane_verify.setProperty("class", "cardFrame")
+        pane_verify.setStyleSheet("background-color: #181a20; border: 1px solid #282a32; border-radius: 6px; padding: 10px;")
+        v_lay = QVBoxLayout(pane_verify)
+        v_lay.setSpacing(8)
+
+        lbl_v_title = QLabel("🔍 Signature Inspector & Tamper Check")
+        lbl_v_title.setStyleSheet("font-weight: bold; color: #e2e8f0; font-size: 13px;")
+        v_lay.addWidget(lbl_v_title)
+
+        row_v_file = QHBoxLayout()
+        self.txt_tab_verify_file = QLineEdit()
+        self.txt_tab_verify_file.setPlaceholderText("Select PDF to inspect...")
+        if self._get_first_doc_path():
+            self.txt_tab_verify_file.setText(self._get_first_doc_path())
+        row_v_file.addWidget(self.txt_tab_verify_file, stretch=1)
+        btn_browse_v = QPushButton("Browse...")
+        btn_browse_v.clicked.connect(self._browse_tab_verify_file)
+        row_v_file.addWidget(btn_browse_v)
+        btn_do_verify = QPushButton("Verify")
+        btn_do_verify.setStyleSheet("background-color: #0369a1; color: white; font-weight: 600; padding: 4px 10px;")
+        btn_do_verify.clicked.connect(self._execute_tab_verify)
+        row_v_file.addWidget(btn_do_verify)
+        v_lay.addLayout(row_v_file)
+
+        self.lbl_tab_verify_banner = QLabel("No document verified yet.")
+        self.lbl_tab_verify_banner.setStyleSheet("background-color: #1e222b; border: 1px solid #334155; border-radius: 4px; padding: 8px; color: #cbd5e1; font-weight: 500;")
+        self.lbl_tab_verify_banner.setWordWrap(True)
+        v_lay.addWidget(self.lbl_tab_verify_banner)
+
+        self.table_tab_signatures = QTableWidget(0, 3)
+        self.table_tab_signatures.setHorizontalHeaderLabels(["Field", "Signer Common Name", "Status"])
+        self.table_tab_signatures.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_tab_signatures.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table_tab_signatures.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        v_lay.addWidget(self.table_tab_signatures, stretch=1)
+        splitter.addWidget(pane_verify)
+
+        # --- Right: Quick Signer ---
+        pane_sign = QFrame()
+        pane_sign.setProperty("class", "cardFrame")
+        pane_sign.setStyleSheet("background-color: #181a20; border: 1px solid #282a32; border-radius: 6px; padding: 10px;")
+        s_lay = QVBoxLayout(pane_sign)
+        s_lay.setSpacing(8)
+
+        lbl_s_title = QLabel("✍️ Direct Digital Signer")
+        lbl_s_title.setStyleSheet("font-weight: bold; color: #e2e8f0; font-size: 13px;")
+        s_lay.addWidget(lbl_s_title)
+
+        row_s_in = QHBoxLayout()
+        row_s_in.addWidget(QLabel("PDF File:"))
+        self.txt_tab_sign_in = QLineEdit()
+        self.txt_tab_sign_in.setPlaceholderText("PDF to sign...")
+        if self._get_first_doc_path():
+            self.txt_tab_sign_in.setText(self._get_first_doc_path())
+        row_s_in.addWidget(self.txt_tab_sign_in, stretch=1)
+        btn_s_in = QPushButton("Browse...")
+        btn_s_in.clicked.connect(self._browse_tab_sign_in)
+        row_s_in.addWidget(btn_s_in)
+        s_lay.addLayout(row_s_in)
+
+        row_s_cert = QHBoxLayout()
+        row_s_cert.addWidget(QLabel("Certificate:"))
+        self.txt_tab_sign_cert = QLineEdit()
+        self.txt_tab_sign_cert.setPlaceholderText("Path to .p12/.pfx...")
+        saved_c = self.db.get_setting("last_signing_cert", "")
+        if saved_c and Path(saved_c).is_file():
+            self.txt_tab_sign_cert.setText(saved_c)
+        row_s_cert.addWidget(self.txt_tab_sign_cert, stretch=1)
+        btn_s_c = QPushButton("Browse...")
+        btn_s_c.clicked.connect(self._browse_tab_sign_cert)
+        row_s_cert.addWidget(btn_s_c)
+        s_lay.addLayout(row_s_cert)
+
+        row_s_pwd = QHBoxLayout()
+        row_s_pwd.addWidget(QLabel("Password:"))
+        self.txt_tab_sign_pwd = QLineEdit()
+        self.txt_tab_sign_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_tab_sign_pwd.setPlaceholderText("Certificate password")
+        row_s_pwd.addWidget(self.txt_tab_sign_pwd, stretch=1)
+        s_lay.addLayout(row_s_pwd)
+
+        row_s_meta = QHBoxLayout()
+        row_s_meta.addWidget(QLabel("Reason:"))
+        self.txt_tab_sign_reason = QLineEdit("Approved")
+        row_s_meta.addWidget(self.txt_tab_sign_reason, stretch=1)
+        row_s_meta.addWidget(QLabel("Location:"))
+        self.txt_tab_sign_loc = QLineEdit()
+        self.txt_tab_sign_loc.setPlaceholderText("City, Country")
+        row_s_meta.addWidget(self.txt_tab_sign_loc, stretch=1)
+        s_lay.addLayout(row_s_meta)
+
+        self.chk_tab_sign_vis = QCheckBox("Place Visual Signature Stamp on Page")
+        self.chk_tab_sign_vis.setChecked(True)
+        s_lay.addWidget(self.chk_tab_sign_vis)
+
+        row_s_actions = QHBoxLayout()
+        btn_create_cert = QPushButton("🔑 Create New Certificate...")
+        btn_create_cert.setStyleSheet("color: #34d399; font-size: 11px; background: transparent; border: none;")
+        btn_create_cert.clicked.connect(self._open_create_cert_dialog)
+        row_s_actions.addWidget(btn_create_cert)
+        row_s_actions.addStretch()
+
+        btn_run_sign = QPushButton("✍️ Sign PDF Now...")
+        btn_run_sign.setProperty("class", "primaryButton")
+        btn_run_sign.setStyleSheet("background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 4px;")
+        btn_run_sign.clicked.connect(self._execute_tab_sign)
+        row_s_actions.addWidget(btn_run_sign)
+        s_lay.addLayout(row_s_actions)
+        s_lay.addStretch()
+
+        splitter.addWidget(pane_sign)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        layout.addWidget(splitter, stretch=1)
+
+    # --- Digital Signature Event Handlers ---
+    def _open_digital_signature_suite(self) -> None:
+        first_doc = self._get_first_doc_path()
+        dialog = DigitalSignatureDialog(
+            parent=self,
+            initial_pdf_path=first_doc,
+            database=self.db,
+            thread_pool=self.thread_pool,
+        )
+        dialog.signature_applied.connect(self._on_signature_applied_from_dialog)
+        dialog.exec()
+
+    def _open_create_cert_dialog(self) -> None:
+        dialog = DigitalSignatureDialog(
+            parent=self,
+            database=self.db,
+            thread_pool=self.thread_pool,
+        )
+        dialog.tabs.setCurrentIndex(2)  # Certificate generator tab
+        dialog.exec()
+
+    def _browse_signing_cert(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Signing Certificate", "", "PKCS#12 Bundles (*.p12 *.pfx);;All Files (*.*)"
+        )
+        if path:
+            self.txt_sign_cert.setText(path)
+            self.db.set_setting("last_signing_cert", path)
+
+    def _browse_tab_verify_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select PDF to Inspect", "", "PDF Documents (*.pdf)"
+        )
+        if path:
+            self.txt_tab_verify_file.setText(path)
+            self._execute_tab_verify()
+
+    def _browse_tab_sign_in(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select PDF to Sign", "", "PDF Documents (*.pdf)"
+        )
+        if path:
+            self.txt_tab_sign_in.setText(path)
+
+    def _browse_tab_sign_cert(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Certificate", "", "PKCS#12 Bundles (*.p12 *.pfx);;All Files (*.*)"
+        )
+        if path:
+            self.txt_tab_sign_cert.setText(path)
+            self.db.set_setting("last_signing_cert", path)
+
+    def _execute_tab_verify(self) -> None:
+        file_path = self.txt_tab_verify_file.text().strip()
+        if not file_path or not Path(file_path).is_file():
+            QMessageBox.warning(self, "Invalid File", "Please select a valid PDF file.")
+            return
+
+        try:
+            results = PDFEngine.verify_signatures(file_path)
+            self.table_tab_signatures.setRowCount(0)
+
+            if not results:
+                self.lbl_tab_verify_banner.setText("⚪ No digital signatures found in this document.")
+                self.lbl_tab_verify_banner.setStyleSheet("background-color: #1e222b; border: 1px solid #475569; border-radius: 4px; padding: 8px; color: #94a3b8;")
+                return
+
+            has_tampered = any(r.get("tampered") or not r.get("intact") for r in results)
+            all_valid = all(r.get("is_valid") for r in results)
+
+            if has_tampered:
+                self.lbl_tab_verify_banner.setText("🚨 TAMPER ALERT: Document was altered or modified after signing!")
+                self.lbl_tab_verify_banner.setStyleSheet("background-color: #450a0a; border: 1px solid #ef4444; border-radius: 4px; padding: 8px; color: #f87171; font-weight: bold;")
+            elif all_valid:
+                self.lbl_tab_verify_banner.setText(f"🛡️ VALID & INTACT ({len(results)} signature{'s' if len(results) > 1 else ''}). No modifications detected.")
+                self.lbl_tab_verify_banner.setStyleSheet("background-color: #064e3b; border: 1px solid #10b981; border-radius: 4px; padding: 8px; color: #6ee7b7; font-weight: bold;")
+            else:
+                self.lbl_tab_verify_banner.setText("⚠️ Signatures found with warnings or untrusted root certificate.")
+                self.lbl_tab_verify_banner.setStyleSheet("background-color: #451a03; border: 1px solid #f59e0b; border-radius: 4px; padding: 8px; color: #fcd34d;")
+
+            for row, r in enumerate(results):
+                self.table_tab_signatures.insertRow(row)
+                self.table_tab_signatures.setItem(row, 0, QTableWidgetItem(r.get("field_name") or "Sig"))
+                self.table_tab_signatures.setItem(row, 1, QTableWidgetItem(r.get("signer_name") or "Unknown"))
+                intact = r.get("intact") and not r.get("tampered")
+                st_item = QTableWidgetItem("✅ Intact" if intact else "❌ Modified")
+                st_item.setForeground(Qt.GlobalColor.green if intact else Qt.GlobalColor.red)
+                self.table_tab_signatures.setItem(row, 2, st_item)
+
+        except Exception as exc:
+            QMessageBox.critical(self, "Verification Failed", f"Could not verify signatures:\n{exc}")
+
+    def _execute_tab_sign(self) -> None:
+        in_pdf = self.txt_tab_sign_in.text().strip()
+        cert_p = self.txt_tab_sign_cert.text().strip()
+        pwd = self.txt_tab_sign_pwd.text()
+        reason = self.txt_tab_sign_reason.text().strip()
+        location = self.txt_tab_sign_loc.text().strip()
+        visible = self.chk_tab_sign_vis.isChecked()
+
+        if not in_pdf or not Path(in_pdf).is_file():
+            QMessageBox.warning(self, "Missing Document", "Please select a valid PDF to sign.")
+            return
+
+        if not cert_p or not Path(cert_p).is_file():
+            QMessageBox.warning(self, "Missing Certificate", "Please select a valid .p12/.pfx certificate.")
+            return
+
+        out_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Signed PDF", str(Path(in_pdf).parent / f"{Path(in_pdf).stem}_signed.pdf"), "PDF Documents (*.pdf)"
+        )
+        if not out_path:
+            return
+
+        self.progress_card.start_task("Digitally signing document...")
+
+        def _do_sign(progress_callback=None):
+            return PDFEngine.sign_pdf(
+                file_path=in_pdf,
+                output_path=out_path,
+                certificate_path=cert_p,
+                password=pwd,
+                reason=reason,
+                location=location,
+                visible=visible,
+                progress_callback=progress_callback,
+            )
+
+        worker = TaskWorker(_do_sign)
+        worker.signals.progress.connect(self.progress_card.update_progress)
+        worker.signals.finished.connect(lambda res: self._on_tab_sign_success(res))
+        worker.signals.error.connect(lambda err, tb: self._on_worker_error("Digital Signing Failed", err))
+        self.thread_pool.start(worker)
+
+    def _on_tab_sign_success(self, res: Dict[str, Any]) -> None:
+        out_file = res["output_file"]
+        signer = res.get("signer_name") or "Signer"
+        self.db.add_recent_file(out_file, file_type="pdf")
+        self.db.log_operation(
+            module="Digital Signature",
+            action="Direct Sign PDF",
+            input_summary=f"Signed as {signer}",
+            output_file=out_file,
+            status="success",
+        )
+        self._on_operation_done(
+            "Document Signed",
+            f"Successfully applied cryptographic digital signature!\n\nSigner: {signer}\nOutput: {out_file}",
+            out_file
+        )
+        self.txt_tab_verify_file.setText(out_file)
+        self._execute_tab_verify()
+
+    def _on_signature_applied_from_dialog(self, out_path: str) -> None:
+        self.db.add_recent_file(out_path, file_type="pdf")
+        self.txt_tab_verify_file.setText(out_path)
+        self._execute_tab_verify()

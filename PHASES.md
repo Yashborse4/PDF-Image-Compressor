@@ -62,6 +62,13 @@ gantt
   - Before/after size comparison and % savings metrics.
 - [x] **Password Protection & Permissions**: AES-256 document encryption, user/owner passwords, printing/copying permission flags.
 - [x] **PDF Annotations & Watermarks**: Diagonal security watermarks, corner approval stamps, headers, footers with custom opacity and font sizes.
+- [x] **Cryptographic PDF Digital Signing & Verification (PAdES / PKCS#7)**:
+  - Standards-compliant detached digital signing with X.509 certificates and private keys (`.p12` / `.pfx`).
+  - Terminal incremental updates preserving cryptographic ByteRange hashes and allowing multiple non-destructive signatures.
+  - Visible signature placement (preset corners, custom coordinates, and optional visual stamp images) plus invisible signing.
+  - Cryptographic verification & tamper detection (detects byte modifications, unauthorized revisions, and broken signatures).
+  - Built-in RSA X.509 self-signed certificate generator (`digitalSignature` + `contentCommitment` key usages).
+  - Dedicated multi-tab Digital Signature Suite dialog (`DigitalSignatureDialog`), All-in-One Studio export integration, and Advanced PDF Editor toolbar integration.
 
 ### Phase 3 – Image Tools 🟢 [COMPLETED]
 - [x] **Single Image Studio**: Live image canvas preview, dimensions, aspect ratio, and byte size indicators.
@@ -126,7 +133,8 @@ gantt
 | **Image Engine & Optimizer** | [`image_engine.py`](file:///E:/PDF%20Merger/docutools/core/image_engine.py) | 4 / 4 | ✅ Verified |
 | **Document Engine (DOCX)** | [`docx_engine.py`](file:///E:/PDF%20Merger/docutools/core/docx_engine.py) | 2 / 2 | ✅ Verified |
 | **Conversion Pipeline** | [`conversion_engine.py`](file:///E:/PDF%20Merger/docutools/core/conversion_engine.py) | 4 / 4 | ✅ Verified |
+| **Cryptographic Digital Signing & Suite** | [`test_pdf_digital_signing.py`](file:///E:/PDF%20Merger/tests/test_pdf_digital_signing.py) | 8 / 8 | ✅ Verified |
 | **Phase 1 Core Infrastructure** | [`test_phase1_core.py`](file:///E:/PDF%20Merger/tests/test_phase1_core.py) | 11 / 11 | ✅ Verified |
 | **Phase 1 UI Cleanliness** | [`test_phase1_ui.py`](file:///E:/PDF%20Merger/tests/test_phase1_ui.py) | 5 / 5 | ✅ Verified |
 | **GUI & 8-View Shell** | [`main_window.py`](file:///E:/PDF%20Merger/docutools/main_window.py) | GUI Instantiated | ✅ Verified |
-| **Total** | | **51 / 51** | **100% Passed** |
+| **Total** | | **59 / 59** | **100% Passed** |

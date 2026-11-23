@@ -31,6 +31,7 @@ A modular desktop application built with **Python 3.13 + PySide6 (Qt 6)**, deliv
 - **Merge Engine**: Combine multiple PDF documents into a unified file with drag-and-drop file ordering.
 - **Split Engine**: Split by custom page ranges (e.g., `1-3, 5, 8-10`) or by fixed page chunks (every $N$ pages).
 - **AES-256 Encryption & Permissions**: Password protect sensitive documents and restrict copying/printing permissions.
+- **Cryptographic Digital Signatures (PAdES / PKCS#7)**: Apply standards-compliant detached digital signatures with X.509 PKCS#12 bundles (.p12/.pfx), inspect and verify existing signatures, detect post-signing modifications/tampering, and generate self-signed RSA certificates.
 
 ### 🔄 Universal Conversion Center
 - **PDF to Images**: Convert PDF pages to high-resolution PNG, JPEG, or WebP with configurable DPI (72 to 600 DPI).

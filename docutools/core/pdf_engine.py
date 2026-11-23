@@ -105,6 +105,14 @@ class PDFEngine:
         watermark_text: Optional[str] = None,
         watermark_opacity: float = 0.3,
         watermark_size: int = 40,
+        sign_certificate_path: Optional[str | Path] = None,
+        sign_password: Optional[str] = None,
+        sign_reason: Optional[str] = None,
+        sign_location: Optional[str] = None,
+        sign_visible: bool = False,
+        sign_page_index: int = 0,
+        sign_rect: Optional[Tuple[float, float, float, float]] = None,
+        sign_image_path: Optional[str | Path] = None,
         progress_callback: Optional[Callable[[int, str], None]] = None
     ) -> Dict[str, Any]:
         """
@@ -163,10 +171,10 @@ class PDFEngine:
             for d in open_docs.values():
                 d.close()
 
-        # Step 2: Handle intermediate saves / compression / protection
+        # Step 2: Handle intermediate saves / compression / protection / digital signing
         temp_files: List[str] = []
         try:
-            if not compress and not user_password and not owner_password:
+            if not compress and not user_password and not owner_password and not sign_certificate_path:
                 if progress_callback:
                     progress_callback(90, "Writing final PDF...")
                 out_doc.save(
@@ -209,6 +217,32 @@ class PDFEngine:
                     PDFEngine.compress_pdf(current_file, tf_stage2.name, quality_level=compress_profile)
                     current_file = tf_stage2.name
 
+                # Digital signing step (cryptographic terminal operation before optional move)
+                if sign_certificate_path:
+                    if user_password or owner_password:
+                        raise ValueError(
+                            "Cannot apply digital signature and AES-256 password encryption simultaneously. "
+                            "Digital signatures authenticate document integrity and require unencrypted content."
+                        )
+                    if progress_callback:
+                        progress_callback(80, "Applying cryptographic digital signature (PAdES)...")
+                    tf_signed = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                    tf_signed.close()
+                    temp_files.append(tf_signed.name)
+                    PDFEngine.sign_pdf(
+                        file_path=current_file,
+                        output_path=tf_signed.name,
+                        certificate_path=sign_certificate_path,
+                        password=sign_password,
+                        reason=sign_reason,
+                        location=sign_location,
+                        visible=sign_visible,
+                        page_index=sign_page_index,
+                        rect=sign_rect,
+                        image_path=sign_image_path,
+                    )
+                    current_file = tf_signed.name
+
                 # Encryption step
                 if user_password or owner_password:
                     if progress_callback:
@@ -244,6 +278,7 @@ class PDFEngine:
             "compressed": compress,
             "protected": bool(user_password),
             "watermarked": bool(watermark_text),
+            "signed": bool(sign_certificate_path),
         }
 
     @staticmethod
@@ -813,5 +848,209 @@ class PDFEngine:
         doc.save(str(out_p), garbage=3, deflate=True)
         doc.close()
         return str(out_p)
+
+    # =========================================================================
+    # DIGITAL SIGNATURES & CRYPTOGRAPHIC VERIFICATION (PAdES / PKCS#7)
+    # =========================================================================
+
+    @staticmethod
+    def sign_pdf(
+        file_path: str | Path,
+        output_path: str | Path,
+        certificate_path: str | Path,
+        password: Optional[str] = None,
+        reason: Optional[str] = None,
+        location: Optional[str] = None,
+        visible: bool = False,
+        page_index: int = 0,
+        rect: Optional[Tuple[float, float, float, float]] = None,
+        image_path: Optional[str | Path] = None,
+        field_name: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Digitally sign a PDF document using an X.509 certificate and private key (PKCS#12 / .p12 / .pfx).
+        Produces a cryptographically compliant PAdES / PKCS#7 detached digital signature.
+
+        Signing is performed as a strict TERMINAL incremental update over finalized bytes,
+        preserving the cryptographic byte-range hash and document integrity.
+        """
+        src_p = Path(file_path)
+        if not src_p.is_file():
+            raise FileNotFoundError(f"Source PDF file not found: {src_p}")
+
+        cert_p = Path(certificate_path)
+        if not cert_p.is_file():
+            raise FileNotFoundError(f"Certificate file not found: {cert_p}")
+
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+
+        if progress_callback:
+            progress_callback(20, "Loading cryptographic certificate...")
+
+        from pdfcore import signing
+
+        signer = signing.load_pkcs12_signer(cert_p, password)
+
+        raw_bytes = src_p.read_bytes()
+
+        # Resolve field name if not specified
+        if not field_name:
+            try:
+                probe = fitz.open(stream=raw_bytes, filetype="pdf")
+                names = signing.signature_field_names(probe)
+                probe.close()
+                field_name = signing.next_field_name(names)
+            except Exception:
+                field_name = "Signature1"
+
+        # Calculate bounding rectangle for visible signature if requested
+        sig_rect = None
+        if visible:
+            if rect is not None:
+                sig_rect = rect
+            else:
+                try:
+                    probe = fitz.open(stream=raw_bytes, filetype="pdf")
+                    idx = max(0, min(page_index, len(probe) - 1))
+                    page = probe[idx]
+                    pw = page.rect.width
+                    ph = page.rect.height
+                    probe.close()
+                    # Default lower-right placement: 180x60 pt box with 20pt margin
+                    box_w, box_h = min(180.0, pw * 0.45), min(60.0, ph * 0.15)
+                    sig_rect = (pw - box_w - 20.0, ph - box_h - 20.0, pw - 20.0, ph - 20.0)
+                except Exception:
+                    sig_rect = (350.0, 700.0, 550.0, 760.0)
+
+        if progress_callback:
+            progress_callback(50, "Generating cryptographic signature digest...")
+
+        res = signing.sign_pdf_bytes(
+            raw_bytes,
+            signer,
+            field_name=field_name,
+            reason=reason,
+            location=location,
+            page_index=page_index,
+            rect=sig_rect,
+            image_path=image_path,
+        )
+
+        if progress_callback:
+            progress_callback(85, "Writing signed document...")
+
+        out_p.write_bytes(res.pdf_bytes)
+
+        if progress_callback:
+            progress_callback(100, "Signing complete!")
+
+        return {
+            "output_file": str(out_p),
+            "field_name": res.field_name,
+            "signer_name": res.signer_name,
+            "self_signed": res.self_signed,
+            "file_size": out_p.stat().st_size,
+            "visible": visible,
+            "page_index": page_index if visible else None,
+        }
+
+    @staticmethod
+    def verify_signatures(
+        file_path: str | Path,
+        password: Optional[str] = None,
+        trust_roots=None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Cryptographically verify all digital signatures in a PDF document.
+        Detects tampering, unauthorized post-signing modifications, and cryptographic integrity.
+        """
+        p = Path(file_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"File not found: {p}")
+
+        raw_bytes = p.read_bytes()
+        from pdfcore import signing
+
+        verifications = signing.verify_pdf_signatures(
+            raw_bytes, trust_roots=trust_roots, password=password
+        )
+
+        results = []
+        for v in verifications:
+            results.append({
+                "field_name": v.field_name,
+                "signer_name": v.signer_name,
+                "intact": v.intact,
+                "valid": v.valid,
+                "trusted": v.trusted,
+                "tampered": v.tampered,
+                "problem": v.problem,
+                "is_valid": bool(v.valid and v.intact and not v.tampered),
+            })
+        return results
+
+    @staticmethod
+    def generate_self_signed_certificate(
+        out_path: str | Path,
+        common_name: str,
+        password: str,
+        valid_days: int = 1095,
+        key_size: int = 2048,
+    ) -> str:
+        """
+        Generate a standards-compliant RSA private key and self-signed X.509 certificate
+        with digital signature and non-repudiation key usages, packed into a password-protected PKCS#12 bundle (.p12/.pfx).
+        """
+        from pdfcore import signing
+
+        dest = signing.generate_self_signed_p12(
+            out_path=out_path,
+            common_name=common_name,
+            password=password,
+            valid_days=valid_days,
+            key_size=key_size,
+        )
+        return str(dest)
+
+    @staticmethod
+    def has_digital_signatures(file_path: str | Path) -> bool:
+        """Quick check whether the PDF file has any digital signatures applied."""
+        p = Path(file_path)
+        if not p.is_file():
+            return False
+        from pdfcore import signing
+
+        try:
+            doc = fitz.open(str(p))
+            result = signing.has_signatures(doc)
+            doc.close()
+            return result
+        except Exception:
+            return False
+
+    @staticmethod
+    def strip_signatures(file_path: str | Path, output_path: str | Path) -> int:
+        """
+        Remove all digital signatures and signature fields from the PDF, saving an unsigned copy.
+        Useful when a user explicitly wishes to edit a previously signed document.
+        """
+        p = Path(file_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"File not found: {p}")
+
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+
+        from pdfcore import signing
+
+        doc = fitz.open(str(p))
+        try:
+            count = signing.strip_signatures(doc)
+            doc.save(str(out_p), garbage=3, deflate=True)
+            return count
+        finally:
+            doc.close()
 
 

@@ -24,7 +24,12 @@ from PySide6.QtWidgets import (
 
 from app.core.logging import get_logger
 from app.ui.widgets import FileDropArea
+from pdfapp import portable
 from pdfapp.document_view import DocumentView
+from pdfapp.sign_dialog import SignDialog
+from pdfapp.signature_manager_dialog import SignatureManagerDialog
+from pdfapp.signature_store import STORE_FILENAME, SignatureStore
+from pdfcore import signing
 from pdfcore.document import PdfDocument
 
 logger = get_logger("pdf_editor_view")
@@ -37,6 +42,7 @@ class AdvancedPdfEditorView(QWidget):
         super().__init__(parent)
         self.doc: Optional[PdfDocument] = None
         self.doc_view: Optional[DocumentView] = None
+        self._signatures = SignatureStore(portable.data_dir() / STORE_FILENAME)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -122,6 +128,34 @@ class AdvancedPdfEditorView(QWidget):
 
         self.toolbar.addSeparator()
 
+        # Digital Signing Controls
+        self.place_sig_btn = QPushButton(" Place Signature")
+        self.place_sig_btn.setIcon(qta.icon("fa5s.file-signature", color="#9ca3af"))
+        self.place_sig_btn.setToolTip("Drag a rectangle on any page to place a visual digital signature")
+        self.place_sig_btn.setCheckable(True)
+        self.place_sig_btn.setEnabled(False)
+        self.place_sig_btn.clicked.connect(self._on_place_signature_clicked)
+        self.toolbar.addWidget(self.place_sig_btn)
+
+        self.sign_invis_action = QAction(qta.icon("fa5s.pen-nib", color="#9ca3af"), "Sign (Invisible)", self)
+        self.sign_invis_action.setToolTip("Apply cryptographic PAdES digital signature without visible stamp")
+        self.sign_invis_action.setEnabled(False)
+        self.sign_invis_action.triggered.connect(self._sign_invisible)
+        self.toolbar.addAction(self.sign_invis_action)
+
+        self.sig_status_action = QAction(qta.icon("fa5s.shield-alt", color="#9ca3af"), "Signature Status", self)
+        self.sig_status_action.setToolTip("Inspect and verify digital signatures in this document")
+        self.sig_status_action.setEnabled(False)
+        self.sig_status_action.triggered.connect(self._show_signature_status)
+        self.toolbar.addAction(self.sig_status_action)
+
+        self.manage_sigs_action = QAction(qta.icon("fa5s.id-card", color="#9ca3af"), "Manage Signatures", self)
+        self.manage_sigs_action.setToolTip("Manage saved signing identities and certificates")
+        self.manage_sigs_action.triggered.connect(self._manage_signatures)
+        self.toolbar.addAction(self.manage_sigs_action)
+
+        self.toolbar.addSeparator()
+
         # Zoom Controls
         self.zoom_out_action = QAction(qta.icon("fa5s.search-minus", color="#9ca3af"), "Zoom Out", self)
         self.zoom_out_action.setEnabled(False)
@@ -173,6 +207,13 @@ class AdvancedPdfEditorView(QWidget):
 
             self.doc = PdfDocument.open(path)
             self.doc_view = DocumentView(self.doc, parent=self)
+            self.doc_view.open_password = ""
+
+            # Connect digital signing signals from canvas & banner
+            self.doc_view.signatureRectSelected.connect(
+                lambda n, rect: self._run_sign_flow(page_index=n, rect=rect)
+            )
+            self.doc_view.signatureDetailsRequested.connect(self._show_signature_status)
 
             self.stack.addWidget(self.doc_view)
             self.stack.setCurrentWidget(self.doc_view)
@@ -181,39 +222,170 @@ class AdvancedPdfEditorView(QWidget):
             self.save_action.setEnabled(True)
             self.save_as_action.setEnabled(True)
             self.edit_mode_btn.setEnabled(True)
+            self.place_sig_btn.setEnabled(True)
+            self.sign_invis_action.setEnabled(True)
+            self.sig_status_action.setEnabled(True)
             self.zoom_in_action.setEnabled(True)
             self.zoom_out_action.setEnabled(True)
             self.fit_width_action.setEnabled(True)
             self.close_action.setEnabled(True)
+
+            # Announce status if document is signed
+            self._announce_signatures(path)
 
             logger.info("Loaded PDF into editor: %s (%d pages)", path.name, self.doc.page_count)
         except Exception as exc:
             logger.error("Failed to load PDF in editor: %s", exc)
             QMessageBox.critical(self, "Failed to Open PDF", f"Could not load PDF document:\n{exc}")
 
-    def _toggle_edit_mode(self) -> None:
-        if self.doc_view:
-            checked = self.edit_mode_btn.isChecked()
-            self.doc_view.set_edit_mode(checked)
-            self.edit_mode_btn.setText(" Edit Mode (Active)" if checked else " Edit Mode")
+    def _announce_signatures(self, path: Path) -> None:
+        """Inspect and surface any digital signatures in the opened document."""
+        if not self.doc_view or not path.is_file():
+            return
+        try:
+            checks = signing.verify_pdf_signatures(path.read_bytes(), password=self.doc_view.open_password)
+            if not checks:
+                return
+            has_tampered = any(c.tampered or not c.intact for c in checks)
+            if has_tampered:
+                self.doc_view.set_signature_banner(
+                    "tampered",
+                    "This document has been modified or tampered with since being digitally signed."
+                )
+            elif all(c.valid and c.intact for c in checks):
+                names = [c.signer_name for c in checks if c.signer_name]
+                signer_str = f"by {', '.join(names)}" if names else ""
+                self.doc_view.set_signature_banner(
+                    "intact",
+                    f"Digitally signed {signer_str} — all signatures are intact."
+                )
+            else:
+                self.doc_view.set_signature_banner(
+                    "problem",
+                    "One or more digital signatures in this document could not be validated."
+                )
+        except Exception as exc:
+            logger.warning("Could not verify signatures on open: %s", exc)
 
-    def _save_doc(self) -> None:
+    def _on_place_signature_clicked(self) -> None:
         if self.doc_view:
-            try:
-                self.doc_view.save()
-                QMessageBox.information(self, "Saved", "Document saved successfully.")
-            except Exception as exc:
-                QMessageBox.critical(self, "Save Error", f"Failed to save document:\n{exc}")
+            if self.doc_view.armed_action == "sign":
+                self.doc_view.cancel_armed_mode()
+                self.place_sig_btn.setChecked(False)
+            else:
+                self.doc_view.begin_place_signature()
+                self.place_sig_btn.setChecked(True)
 
-    def _save_doc_as(self) -> None:
-        if self.doc_view:
-            dest, _ = QFileDialog.getSaveFileName(self, "Save PDF As", "", "PDF Document (*.pdf)")
-            if dest:
-                try:
-                    self.doc_view.save_as(Path(dest))
-                    QMessageBox.information(self, "Saved", f"Document saved as:\n{dest}")
-                except Exception as exc:
-                    QMessageBox.critical(self, "Save Error", f"Failed to save document:\n{exc}")
+    def _sign_invisible(self) -> None:
+        self._run_sign_flow(page_index=None, rect=None)
+
+    def _show_signature_status(self) -> None:
+        if not self.doc or not self.doc.path or not self.doc.path.is_file():
+            QMessageBox.information(self, "Signature Status", "No document currently loaded.")
+            return
+
+        try:
+            checks = signing.verify_pdf_signatures(
+                self.doc.path.read_bytes(),
+                password=getattr(self.doc_view, "open_password", "") or ""
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Signature Check Error", f"Could not inspect signatures:\n{exc}")
+            return
+
+        if not checks:
+            if self.doc.has_signatures():
+                QMessageBox.warning(
+                    self, "Signature Status",
+                    "This document contains a signature field, but it cannot be verified — treat as unsigned."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Signature Status",
+                    "This document has no digital signatures."
+                )
+            return
+
+        lines = []
+        for c in checks:
+            who = c.signer_name or "Unknown Signer"
+            if c.intact and c.valid:
+                st = "✅ INTACT & VALID — Document unaltered since signed."
+                if not c.trusted:
+                    st += " (Self-signed or local certificate authority)"
+            else:
+                st = f"❌ BROKEN / MODIFIED — {c.problem}"
+            lines.append(f"• Field '{c.field_name}' ({who}):\n  {st}")
+
+        QMessageBox.information(self, "Signature Verification Details", "\n\n".join(lines))
+
+    def _manage_signatures(self) -> None:
+        dlg = SignatureManagerDialog(self, self._signatures)
+        dlg.exec()
+
+    def _run_sign_flow(self, page_index: Optional[int] = None, rect: Optional[tuple] = None) -> None:
+        if not self.doc or not self.doc_view:
+            return
+
+        visible = rect is not None
+        dialog = SignDialog(
+            self,
+            self._signatures.profiles(),
+            visible_signature=visible,
+        )
+        if not dialog.exec():
+            self.place_sig_btn.setChecked(False)
+            if self.doc_view:
+                self.doc_view.cancel_armed_mode()
+            return
+
+        signer = dialog.signer
+        if not signer:
+            return
+
+        out_path_str, _ = QFileDialog.getSaveFileName(
+            self, "Save Signed PDF", str(self.doc.path.parent / f"{self.doc.path.stem}_signed.pdf"), "PDF Files (*.pdf)"
+        )
+        if not out_path_str:
+            self.place_sig_btn.setChecked(False)
+            if self.doc_view:
+                self.doc_view.cancel_armed_mode()
+            return
+
+        out_path = Path(out_path_str)
+        try:
+            profile = dialog.selected_profile()
+            image_path = None
+            if visible and profile and profile.signature_image and dialog.use_signature_image():
+                image_path = profile.signature_image
+
+            result = self.doc.save_signed(
+                out_path,
+                signer,
+                field_name=signing.next_field_name(self.doc.signature_field_names()),
+                reason=dialog.reason(),
+                location=dialog.location(),
+                page_index=page_index if page_index is not None else 0,
+                rect=rect,
+                image_path=image_path,
+            )
+
+            QMessageBox.information(
+                self, "Document Signed",
+                f"Successfully digitally signed and saved:\n{out_path.name}\n\n"
+                f"Signer: {result.signer_name}\n"
+                f"Type: {'Self-Signed (Tamper-evident)' if result.self_signed else 'CA-Issued'}"
+            )
+            # Open signed copy in editor
+            self.load_pdf(str(out_path))
+
+        except Exception as exc:
+            logger.error("Digital signing failed: %s", exc)
+            QMessageBox.critical(self, "Signing Failed", f"Could not sign document:\n{exc}")
+        finally:
+            self.place_sig_btn.setChecked(False)
+            if self.doc_view:
+                self.doc_view.cancel_armed_mode()
 
     def close_document(self) -> None:
         """Close current document view and reset toolbar."""
@@ -232,6 +404,10 @@ class AdvancedPdfEditorView(QWidget):
         self.edit_mode_btn.setEnabled(False)
         self.edit_mode_btn.setChecked(False)
         self.edit_mode_btn.setText(" Edit Mode")
+        self.place_sig_btn.setEnabled(False)
+        self.place_sig_btn.setChecked(False)
+        self.sign_invis_action.setEnabled(False)
+        self.sig_status_action.setEnabled(False)
         self.zoom_in_action.setEnabled(False)
         self.zoom_out_action.setEnabled(False)
         self.fit_width_action.setEnabled(False)
