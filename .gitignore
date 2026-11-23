@@ -10,6 +10,8 @@ __pycache__/
 build/
 dist/
 vendor/
+packages/
+*.zip
 
 # Virtual environment
 .venv/

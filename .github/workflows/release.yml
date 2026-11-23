@@ -30,23 +30,7 @@ jobs:
 
       - name: Build Standalone Executable
         run: |
-          python -m PyInstaller `
-            --name "DocuTools" `
-            --windowed `
-            --onedir `
-            --clean `
-            --noconfirm `
-            --icon "docutools/assets/icon.ico" `
-            --add-data "docutools/assets;docutools/assets" `
-            --add-data "docutools/ui/styles.py;docutools/ui" `
-            --exclude-module scipy `
-            --exclude-module pandas `
-            --exclude-module sklearn `
-            --exclude-module nltk `
-            --exclude-module flask `
-            --exclude-module matplotlib `
-            --exclude-module openpyxl `
-            run.py
+          python -m PyInstaller DocuTools.spec --noconfirm --clean
 
       - name: Package Release ZIP
         shell: pwsh

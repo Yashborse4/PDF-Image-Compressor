@@ -267,6 +267,45 @@ class AdvancedPdfEditorView(QWidget):
         except Exception as exc:
             logger.warning("Could not verify signatures on open: %s", exc)
 
+    def _toggle_edit_mode(self) -> None:
+        """Toggle edit mode in document view."""
+        if self.doc_view:
+            checked = self.edit_mode_btn.isChecked()
+            self.doc_view.set_edit_mode(checked)
+            self.edit_mode_btn.setText(" Edit Mode" if not checked else " Done Editing")
+
+    def _save_doc(self) -> None:
+        """Save changes back to the currently loaded document file."""
+        if not self.doc:
+            return
+        try:
+            self.doc.save_in_place()
+            logger.info("Saved changes in place: %s", self.doc.path)
+            QMessageBox.information(self, "Saved", f"Changes successfully saved to {self.doc.path.name}.")
+        except Exception as exc:
+            logger.error("Failed to save changes in place: %s", exc)
+            QMessageBox.critical(self, "Save Error", f"Could not save document:\n{exc}")
+
+    def _save_doc_as(self) -> None:
+        """Save copy of document to a new destination."""
+        if not self.doc:
+            return
+        default_name = str(self.doc.path.parent / f"{self.doc.path.stem}_edited.pdf") if self.doc.path else "edited.pdf"
+        out_path_str, _ = QFileDialog.getSaveFileName(
+            self, "Save PDF As", default_name, "PDF Files (*.pdf)"
+        )
+        if not out_path_str:
+            return
+        out_path = Path(out_path_str)
+        try:
+            self.doc.save(out_path)
+            logger.info("Saved PDF copy to: %s", out_path)
+            QMessageBox.information(self, "Saved", f"Document saved successfully as:\n{out_path.name}")
+            self.load_pdf(str(out_path))
+        except Exception as exc:
+            logger.error("Failed to save document copy: %s", exc)
+            QMessageBox.critical(self, "Save Error", f"Could not save document copy:\n{exc}")
+
     def _on_place_signature_clicked(self) -> None:
         if self.doc_view:
             if self.doc_view.armed_action == "sign":
