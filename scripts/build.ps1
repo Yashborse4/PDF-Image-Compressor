@@ -1,4 +1,4 @@
-# One-command build. Runs the CI gates, packages the frozen bundle, and smokes
+﻿# One-command build. Runs the CI gates, packages the frozen bundle, and smokes
 # the packaged .exe. Optionally compiles the installer on top.
 #
 # Usage:
@@ -83,7 +83,11 @@ Step "Package (PyInstaller onedir + portable zip)"
 & (Join-Path $PSScriptRoot "package.ps1")
 if ($LASTEXITCODE -ne 0) { Fail "packaging failed." }
 
-$exe = Join-Path $root "dist\pdf-editor\pdf-editor.exe"
+if (Test-Path (Join-Path $root "dist\DocuTools\DocuTools.exe")) {
+    $exe = Join-Path $root "dist\DocuTools\DocuTools.exe"
+} else {
+    $exe = Join-Path $root "dist\pdf-editor\pdf-editor.exe"
+}
 if (-not (Test-Path $exe)) { Fail "packaged exe not found at $exe" }
 
 # --- 3. Smoke the PACKAGED exe (proves Qt, MuPDF, print support and the

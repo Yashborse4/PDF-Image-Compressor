@@ -40,7 +40,8 @@ from PySide6.QtGui import QGuiApplication, QImage, QPainter  # noqa: E402
 from PySide6.QtSvg import QSvgRenderer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-SVG = ROOT / "assets" / "file icon.svg"
+_svg_candidates = [ROOT / "assets" / "file_icon.svg", ROOT / "assets" / "file icon.svg"]
+SVG = next((p for p in _svg_candidates if p.exists()), _svg_candidates[0])
 ICO = ROOT / "assets" / "pdf-document.ico"
 
 ICO_SIZES = [256, 48, 32, 16]  # Windows scales single-size .ico badly.

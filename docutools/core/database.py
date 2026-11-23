@@ -19,10 +19,14 @@ class Database:
 
     def __init__(self, db_path: Optional[str | Path] = None):
         if db_path is None:
-            # Store in standard user AppData or project directory
-            app_dir = Path.home() / ".docutools"
-            app_dir.mkdir(parents=True, exist_ok=True)
-            self.db_path = app_dir / "docutools.db"
+            # Prefer centralized application data location (%LOCALAPPDATA%\DocuTools\docutools.db)
+            try:
+                from config import DATABASE_PATH
+                self.db_path = Path(DATABASE_PATH)
+            except Exception:
+                app_dir = Path.home() / ".docutools"
+                app_dir.mkdir(parents=True, exist_ok=True)
+                self.db_path = app_dir / "docutools.db"
         else:
             self.db_path = Path(db_path)
             self.db_path.parent.mkdir(parents=True, exist_ok=True)

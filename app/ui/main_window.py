@@ -28,7 +28,6 @@ from app.ui.about_view import AboutView
 from app.ui.dashboard import DashboardView
 from app.ui.history_view import HistoryView
 from app.ui.pdf_editor_view import AdvancedPdfEditorView
-from app.ui.placeholder_views import BatchView
 from app.ui.settings_view import SettingsView
 from app.ui.sidebar import SidebarWidget
 from app.ui.theme import apply_theme
@@ -36,6 +35,7 @@ from app.ui.transitions import SmoothStackedWidget
 
 # Import processing views from docutools
 from docutools.core.database import Database as DocuToolsDB
+from docutools.ui.views.batch_processing_view import BatchProcessingView
 from docutools.ui.views.conversion_view import ConversionView
 from docutools.ui.views.document_studio_view import DocumentStudioView
 from docutools.ui.views.image_studio_view import ImageStudioView
@@ -130,7 +130,7 @@ class DocuToolsMainWindow(QMainWindow):
         self._add_page("converter", self.converter_view)
 
         # 6. Batch Processing Queue
-        self.batch_view = BatchView(self)
+        self.batch_view = BatchProcessingView(self.legacy_db, self.thread_pool, self)
         self._add_page("batch", self.batch_view)
 
         # 7. Processing History

@@ -158,8 +158,8 @@ class PdfDocument:
 
     @property
     def permissions(self) -> protect.Permissions:
-        """What the current auth level allows (all-allowed for plain docs)."""
-        if not self.is_protected:
+        """What the current auth level allows (all-allowed for plain docs and owners)."""
+        if not self.is_protected or self.is_owner:
             return protect.Permissions.from_mask(-1)
         return protect.Permissions.from_mask(int(self._doc.permissions))
 

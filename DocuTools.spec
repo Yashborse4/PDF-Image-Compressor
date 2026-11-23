@@ -14,6 +14,7 @@ datas = [
     ("src/pdfapp", "pdfapp"),
     ("app", "app"),
     ("config.py", "."),
+    ("main.py", "."),
     ("assets", "assets"),
 ]
 
@@ -31,6 +32,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=[
+        "main",
         "pdfcore",
         "pdfcore.signing",
         "pdfcore.document",

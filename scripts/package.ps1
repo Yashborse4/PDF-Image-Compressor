@@ -1,9 +1,13 @@
-# Build the standalone one-folder bundle with PyInstaller and zip it.
+﻿# Build the standalone one-folder bundle with PyInstaller and zip it.
 # Usage:  .\scripts\package.ps1
-# Note: pdf_editor.spec is created at milestone M2; this script fails clearly
-# until then.
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\.."
+
+# Delegate to DocuTools automated build pipeline
+if (Test-Path (Join-Path $root "DocuTools.spec")) {
+    & (Join-Path $PSScriptRoot "build_docutools.ps1")
+    exit $LASTEXITCODE
+}
 $py = Join-Path $root ".venv\Scripts\python.exe"
 $spec = Join-Path $root "pdf_editor.spec"
 

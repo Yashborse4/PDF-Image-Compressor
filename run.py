@@ -87,11 +87,27 @@ for p in candidate_paths:
     if p.exists() and str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from docutools.app import main
+
+def run_app() -> int:
+    """Launch DocuTools application with modern Fluent shell and classic fallback."""
+    # Check for explicit classic shell request
+    if "--classic" in sys.argv or "--legacy" in sys.argv:
+        from docutools.app import main as classic_main
+        return classic_main()
+
+    try:
+        from main import main as unified_main
+        return unified_main()
+    except Exception as exc:
+        import logging
+        logging.warning("Unified main failed to start (%s); falling back to classic shell", exc)
+        from docutools.app import main as classic_main
+        return classic_main()
+
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(run_app())
     except Exception:
         if sys.excepthook:
             sys.excepthook(*sys.exc_info())

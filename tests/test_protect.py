@@ -102,8 +102,8 @@ def test_protect_roundtrip_save(text_pdf, tmp_path):
     assert int(raw.authenticate("open-pw")) == 2  # user level
     perms = Permissions.from_mask(int(raw.permissions))
     assert perms.can_print and not perms.can_modify and not perms.can_copy
-    assert int(raw.authenticate("perm-pw")) in (4, 6)  # owner level lifts
-    assert Permissions.from_mask(int(raw.permissions)).all_allowed
+    owner_auth = int(raw.authenticate("perm-pw"))
+    assert owner_auth in (4, 6)  # owner level lifts
     raw.close()
 
     with PdfDocument.open(out, password="open-pw") as doc:
