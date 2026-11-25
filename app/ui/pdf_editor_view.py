@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import qtawesome as qta
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QFont, QIcon
 from PySide6.QtWidgets import (
@@ -93,8 +94,6 @@ class AdvancedPdfEditorView(QWidget):
         self.layout.addWidget(self.stack)
 
     def _build_toolbar(self) -> None:
-        import qtawesome as qta
-
         self.toolbar = QToolBar("PDF Editor Controls")
         self.toolbar.setIconSize(QSize(18, 18))
         self.toolbar.setStyleSheet("QToolBar { border-bottom: 1px solid #383842; padding: 4px; }")

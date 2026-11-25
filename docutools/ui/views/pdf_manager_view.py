@@ -117,24 +117,121 @@ class PDFManagerView(QWidget):
         self.progress_card = ProgressCard()
         main_layout.addWidget(self.progress_card)
 
+        # Operation Mode Switcher Ribbon
+        ribbon_frame = QFrame()
+        ribbon_frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 4px;
+            }
+        """)
+        ribbon_lay = QHBoxLayout(ribbon_frame)
+        ribbon_lay.setContentsMargins(6, 4, 6, 4)
+        ribbon_lay.setSpacing(6)
+
+        lbl_modes = QLabel("Quick Navigation:")
+        lbl_modes.setStyleSheet("font-weight: 700; color: #94a3b8; font-size: 11px;")
+        ribbon_lay.addWidget(lbl_modes)
+
+        self.mode_btn_group = QButtonGroup(self)
+        self.mode_btn_group.setExclusive(True)
+        mode_buttons = [
+            ("📑 Organize & Merge", 0),
+            ("✂️ Split & Extract", 1),
+            ("📉 Compress PDF", 2),
+            ("🔒 Password Protect", 3),
+            ("🔏 Digital Sign", 4),
+            ("✏️ Edit Text", 5),
+        ]
+        for label, tab_idx in mode_buttons:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #cbd5e1;
+                    border: 1px solid transparent;
+                    border-radius: 6px;
+                    padding: 5px 12px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: rgba(255, 255, 255, 0.06);
+                    color: #ffffff;
+                }
+                QPushButton:checked {
+                    background-color: rgba(96, 205, 255, 0.16);
+                    color: #60cdff;
+                    border: 1px solid rgba(96, 205, 255, 0.35);
+                }
+            """)
+            btn.clicked.connect(lambda _, idx=tab_idx: self.switch_to_tab(idx))
+            self.mode_btn_group.addButton(btn, tab_idx)
+            ribbon_lay.addWidget(btn)
+            if tab_idx == 0:
+                btn.setChecked(True)
+
+        ribbon_lay.addStretch()
+        main_layout.addWidget(ribbon_frame)
+
         # Main Navigation Tabs
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         self.tab_studio = QWidget()
-        self.tab_editor = QWidget()
         self.tab_split = QWidget()
+        self.tab_compress = QWidget()
+        self.tab_protect = QWidget()
         self.tab_sign = QWidget()
+        self.tab_editor = QWidget()
 
-        self.tabs.addTab(self.tab_studio, "📑 All-in-One Studio")
+        self.tabs.addTab(self.tab_studio, "📑 Organize & Merge")
+        self.tabs.addTab(self.tab_split, "✂️ Split & Extract")
+        self.tabs.addTab(self.tab_compress, "📉 Compress & Optimize")
+        self.tabs.addTab(self.tab_protect, "🔒 Password & Permissions")
+        self.tabs.addTab(self.tab_sign, "🔏 Digital Signatures")
         self.tabs.addTab(self.tab_editor, "✏️ In-Place Content Editor")
-        self.tabs.addTab(self.tab_split, "✂️ Split Document")
-        self.tabs.addTab(self.tab_sign, "🔏 Digital Signing & Verification")
 
         main_layout.addWidget(self.tabs, stretch=1)
 
         self._build_studio_tab()
-        self._build_editor_tab()
         self._build_split_tab()
+        self._build_compress_tab()
+        self._build_protect_tab()
         self._build_signing_tab()
+        self._build_editor_tab()
+
+    def _on_tab_changed(self, index: int) -> None:
+        btn = self.mode_btn_group.button(index)
+        if btn and not btn.isChecked():
+            btn.setChecked(True)
+
+    def switch_to_tab(self, target: str | int) -> None:
+        """Switch active tab in PDF Manager."""
+        tab_map = {
+            "studio": 0,
+            "organize": 0,
+            "merge": 0,
+            "split": 1,
+            "compress": 2,
+            "protect": 3,
+            "security": 3,
+            "sign": 4,
+            "signature": 4,
+            "editor": 5,
+            "edit": 5,
+        }
+        if isinstance(target, str):
+            idx = tab_map.get(target.lower(), 0)
+        else:
+            idx = max(0, min(5, target))
+        self.tabs.setCurrentIndex(idx)
+        btn = self.mode_btn_group.button(idx)
+        if btn:
+            btn.setChecked(True)
 
     # =========================================================================
     # TAB 1: ALL-IN-ONE SINGLE-WINDOW PDF STUDIO
@@ -688,6 +785,318 @@ class PDFManagerView(QWidget):
         layout.addStretch()
 
     # =========================================================================
+    # TAB 3: DEDICATED PDF COMPRESSION & STREAM OPTIMIZATION
+    # =========================================================================
+    def _build_compress_tab(self) -> None:
+        layout = QVBoxLayout(self.tab_compress)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(14)
+
+        card = QFrame()
+        card.setProperty("class", "cardFrame")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(16)
+
+        # Header
+        h_box = QHBoxLayout()
+        icon_lbl = QLabel("📉")
+        icon_lbl.setStyleSheet("font-size: 24px;")
+        h_box.addWidget(icon_lbl)
+        h_text = QVBoxLayout()
+        t_lbl = QLabel("Fast PDF Compression & Stream Optimization")
+        t_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #60cdff;")
+        s_lbl = QLabel("Shrink document size up to 80% using deep stream deflation and intelligent image downsampling.")
+        s_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        h_text.addWidget(t_lbl)
+        h_text.addWidget(s_lbl)
+        h_box.addLayout(h_text)
+        h_box.addStretch()
+        card_layout.addLayout(h_box)
+
+        # Source PDF Selection
+        grp_source = QGroupBox("Source PDF File")
+        lay_source = QHBoxLayout(grp_source)
+        self.txt_compress_file = QLineEdit()
+        self.txt_compress_file.setPlaceholderText("Select or drop a PDF document to compress...")
+        if self._get_first_doc_path():
+            self.txt_compress_file.setText(self._get_first_doc_path())
+        lay_source.addWidget(self.txt_compress_file, stretch=1)
+        btn_browse_comp = QPushButton("Browse...")
+        btn_browse_comp.clicked.connect(self._browse_compress_file)
+        lay_source.addWidget(btn_browse_comp)
+        card_layout.addWidget(grp_source)
+
+        # Compression Presets
+        grp_level = QGroupBox("Compression Profile")
+        lay_level = QVBoxLayout(grp_level)
+        self.combo_compress_level = QComboBox()
+        self.combo_compress_level.addItems([
+            "Medium (Balanced — Recommended: Deflate streams & 75% quality raster media)",
+            "High (Maximum Deflation — Aggressive compression for email, storage, and web sharing)",
+            "Low (Gentle — Lossless stream deflation, retains 85% image quality)"
+        ])
+        self.combo_compress_level.setCurrentIndex(0)
+        lay_level.addWidget(self.combo_compress_level)
+        card_layout.addWidget(grp_level)
+
+        # Output Destination
+        grp_out = QGroupBox("Output File Destination")
+        lay_out = QHBoxLayout(grp_out)
+        self.txt_compress_out = QLineEdit()
+        self.txt_compress_out.setPlaceholderText("Output PDF path (leave blank for automatic _compressed.pdf)...")
+        lay_out.addWidget(self.txt_compress_out, stretch=1)
+        btn_browse_out = QPushButton("Choose...")
+        btn_browse_out.clicked.connect(self._browse_compress_out)
+        lay_out.addWidget(btn_browse_out)
+        card_layout.addWidget(grp_out)
+
+        # Run action
+        btn_run_compress = QPushButton("⚡ Compress PDF Now")
+        btn_run_compress.setProperty("class", "primaryButton")
+        btn_run_compress.setMinimumHeight(42)
+        btn_run_compress.setStyleSheet("font-size: 13px; font-weight: 700;")
+        btn_run_compress.clicked.connect(self._execute_compress_tab)
+        card_layout.addWidget(btn_run_compress)
+
+        layout.addWidget(card)
+        layout.addStretch()
+
+    def _browse_compress_file(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select PDF to Compress", "", "PDF Files (*.pdf)")
+        if file_path:
+            self.txt_compress_file.setText(file_path)
+
+    def _browse_compress_out(self) -> None:
+        initial = self.txt_compress_out.text() or ""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Compressed PDF As", initial, "PDF Files (*.pdf)")
+        if file_path:
+            self.txt_compress_out.setText(file_path)
+
+    def _execute_compress_tab(self) -> None:
+        src = self.txt_compress_file.text().strip()
+        if not src or not Path(src).is_file():
+            QMessageBox.warning(self, "Invalid File", "Please select a valid PDF file to compress.")
+            return
+
+        out = self.txt_compress_out.text().strip()
+        if not out:
+            src_p = Path(src)
+            out = str(src_p.parent / f"{src_p.stem}_compressed.pdf")
+            self.txt_compress_out.setText(out)
+
+        idx = self.combo_compress_level.currentIndex()
+        level_map = {0: "medium", 1: "high", 2: "low"}
+        profile = level_map.get(idx, "medium")
+
+        self.progress_card.start_operation(f"Compressing {Path(src).name}...")
+
+        def _worker_task(progress_callback=None):
+            return PDFEngine.compress_pdf(
+                file_path=src,
+                output_path=out,
+                quality_level=profile,
+                progress_callback=progress_callback
+            )
+
+        def _on_success(res):
+            self.progress_card.set_success("Compression complete!")
+            orig_sz = format_file_size(res.get("original_size", 0))
+            comp_sz = format_file_size(res.get("compressed_size", 0))
+            pct = res.get("savings_percent", 0.0)
+            msg = f"Successfully compressed PDF!\n\nOriginal: {orig_sz}\nCompressed: {comp_sz}\nSaved: {pct:.1f}%\n\nSaved to: {out}"
+            self.db.log_operation(
+                module="PDF Tools",
+                action="Compress PDF",
+                input_summary=Path(src).name,
+                output_file=out,
+                initial_size=res.get("original_size"),
+                final_size=res.get("compressed_size"),
+                status="success"
+            )
+            QMessageBox.information(self, "Compression Success", msg)
+
+        def _on_error(err):
+            self.progress_card.set_error(str(err))
+            QMessageBox.critical(self, "Compression Failed", f"Could not compress PDF:\n{err}")
+
+        worker = TaskWorker(_worker_task)
+        worker.signals.progress.connect(self.progress_card.update_progress)
+        worker.signals.result.connect(_on_success)
+        worker.signals.error.connect(_on_error)
+        self.thread_pool.start(worker)
+
+    # =========================================================================
+    # TAB 4: DEDICATED PDF PASSWORDS & SECURITY PERMISSIONS
+    # =========================================================================
+    def _build_protect_tab(self) -> None:
+        layout = QVBoxLayout(self.tab_protect)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(14)
+
+        card = QFrame()
+        card.setProperty("class", "cardFrame")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(16)
+
+        # Header
+        h_box = QHBoxLayout()
+        icon_lbl = QLabel("🔒")
+        icon_lbl.setStyleSheet("font-size: 24px;")
+        h_box.addWidget(icon_lbl)
+        h_text = QVBoxLayout()
+        t_lbl = QLabel("PDF Security & AES-256 Encryption")
+        t_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #60cdff;")
+        s_lbl = QLabel("Protect documents with user passwords and fine-grained permissions (printing, copying).")
+        s_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        h_text.addWidget(t_lbl)
+        h_text.addWidget(s_lbl)
+        h_box.addLayout(h_text)
+        h_box.addStretch()
+        card_layout.addLayout(h_box)
+
+        # Source PDF Selection
+        grp_source = QGroupBox("Source PDF File")
+        lay_source = QHBoxLayout(grp_source)
+        self.txt_protect_file = QLineEdit()
+        self.txt_protect_file.setPlaceholderText("Select or drop a PDF document to encrypt...")
+        if self._get_first_doc_path():
+            self.txt_protect_file.setText(self._get_first_doc_path())
+        lay_source.addWidget(self.txt_protect_file, stretch=1)
+        btn_browse_prot = QPushButton("Browse...")
+        btn_browse_prot.clicked.connect(self._browse_protect_file)
+        lay_source.addWidget(btn_browse_prot)
+        card_layout.addWidget(grp_source)
+
+        # Passwords
+        grp_pw = QGroupBox("Password Credentials")
+        lay_pw = QGridLayout(grp_pw)
+        lay_pw.setSpacing(10)
+        lay_pw.addWidget(QLabel("User Open Password:"), 0, 0)
+        self.txt_tab_user_pw = QLineEdit()
+        self.txt_tab_user_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_tab_user_pw.setPlaceholderText("Required to view the document")
+        lay_pw.addWidget(self.txt_tab_user_pw, 0, 1)
+
+        lay_pw.addWidget(QLabel("Owner Permissions Password:"), 1, 0)
+        self.txt_tab_owner_pw = QLineEdit()
+        self.txt_tab_owner_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_tab_owner_pw.setPlaceholderText("Required to change permissions (optional, defaults to open pw)")
+        lay_pw.addWidget(self.txt_tab_owner_pw, 1, 1)
+
+        self.chk_show_passwords = QCheckBox("Show Passwords")
+        self.chk_show_passwords.toggled.connect(self._toggle_show_passwords)
+        lay_pw.addWidget(self.chk_show_passwords, 2, 1)
+        card_layout.addWidget(grp_pw)
+
+        # Permissions
+        grp_perms = QGroupBox("Security Permissions")
+        lay_perms = QVBoxLayout(grp_perms)
+        self.chk_tab_allow_print = QCheckBox("Allow High-Quality Printing")
+        self.chk_tab_allow_print.setChecked(True)
+        self.chk_tab_allow_copy = QCheckBox("Allow Copying Text and Content")
+        self.chk_tab_allow_copy.setChecked(False)
+        lay_perms.addWidget(self.chk_tab_allow_print)
+        lay_perms.addWidget(self.chk_tab_allow_copy)
+        card_layout.addWidget(grp_perms)
+
+        # Output Destination
+        grp_out = QGroupBox("Output File Destination")
+        lay_out = QHBoxLayout(grp_out)
+        self.txt_protect_out = QLineEdit()
+        self.txt_protect_out.setPlaceholderText("Output PDF path (leave blank for automatic _protected.pdf)...")
+        lay_out.addWidget(self.txt_protect_out, stretch=1)
+        btn_browse_out = QPushButton("Choose...")
+        btn_browse_out.clicked.connect(self._browse_protect_out)
+        lay_out.addWidget(btn_browse_out)
+        card_layout.addWidget(grp_out)
+
+        # Run action
+        btn_run_protect = QPushButton("🔒 Apply AES-256 Protection")
+        btn_run_protect.setProperty("class", "primaryButton")
+        btn_run_protect.setMinimumHeight(42)
+        btn_run_protect.setStyleSheet("font-size: 13px; font-weight: 700;")
+        btn_run_protect.clicked.connect(self._execute_protect_tab)
+        card_layout.addWidget(btn_run_protect)
+
+        layout.addWidget(card)
+        layout.addStretch()
+
+    def _browse_protect_file(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select PDF to Protect", "", "PDF Files (*.pdf)")
+        if file_path:
+            self.txt_protect_file.setText(file_path)
+
+    def _browse_protect_out(self) -> None:
+        initial = self.txt_protect_out.text() or ""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Protected PDF As", initial, "PDF Files (*.pdf)")
+        if file_path:
+            self.txt_protect_out.setText(file_path)
+
+    def _toggle_show_passwords(self, show: bool) -> None:
+        mode = QLineEdit.EchoMode.Normal if show else QLineEdit.EchoMode.Password
+        self.txt_tab_user_pw.setEchoMode(mode)
+        self.txt_tab_owner_pw.setEchoMode(mode)
+
+    def _execute_protect_tab(self) -> None:
+        src = self.txt_protect_file.text().strip()
+        if not src or not Path(src).is_file():
+            QMessageBox.warning(self, "Invalid File", "Please select a valid PDF file to protect.")
+            return
+
+        user_pw = self.txt_tab_user_pw.text()
+        owner_pw = self.txt_tab_owner_pw.text() or user_pw
+        if not user_pw and not owner_pw:
+            QMessageBox.warning(self, "Missing Password", "Please specify at least a User Open Password.")
+            return
+
+        out = self.txt_protect_out.text().strip()
+        if not out:
+            src_p = Path(src)
+            out = str(src_p.parent / f"{src_p.stem}_protected.pdf")
+            self.txt_protect_out.setText(out)
+
+        allow_print = self.chk_tab_allow_print.isChecked()
+        allow_copy = self.chk_tab_allow_copy.isChecked()
+
+        self.progress_card.start_operation(f"Encrypting {Path(src).name}...")
+
+        def _worker_task(progress_callback=None):
+            return PDFEngine.protect_pdf(
+                file_path=src,
+                output_path=out,
+                user_password=user_pw,
+                owner_password=owner_pw,
+                allow_printing=allow_print,
+                allow_copying=allow_copy,
+                progress_callback=progress_callback
+            )
+
+        def _on_success(res):
+            self.progress_card.set_success("Password encryption applied!")
+            self.db.log_operation(
+                module="PDF Tools",
+                action="Protect PDF",
+                input_summary=Path(src).name,
+                output_file=out,
+                status="success"
+            )
+            QMessageBox.information(
+                self,
+                "Protection Applied",
+                f"Document successfully encrypted with AES-256!\n\nSaved to: {out}"
+            )
+
+        def _on_error(err):
+            self.progress_card.set_error(str(err))
+            QMessageBox.critical(self, "Protection Failed", f"Could not protect PDF:\n{err}")
+
+        worker = TaskWorker(_worker_task)
+        worker.signals.progress.connect(self.progress_card.update_progress)
+        worker.signals.result.connect(_on_success)
+        worker.signals.error.connect(_on_error)
+        self.thread_pool.start(worker)
+
+    # =========================================================================
     # MULTI-PDF INGESTION & DOCUMENT MANAGEMENT
     # =========================================================================
     def _select_multiple_pdfs_dialog(self) -> None:
@@ -770,6 +1179,13 @@ class PDFManagerView(QWidget):
 
         for d in new_docs:
             self.db.add_recent_file(d["file_path"], file_type="pdf")
+
+        if new_docs:
+            first_path = new_docs[0]["file_path"]
+            if hasattr(self, "txt_compress_file") and not self.txt_compress_file.text():
+                self.txt_compress_file.setText(first_path)
+            if hasattr(self, "txt_protect_file") and not self.txt_protect_file.text():
+                self.txt_protect_file.setText(first_path)
 
         self.editor_total_pages = len(self.pages_data)
         self.editor_current_page = 0

@@ -157,18 +157,17 @@ class ImageEngine:
                 if low_q > high_q:
                     break
 
-            # If even at low quality the image is still too big, downscale dimensionally
+            # If even at low quality the image is still too big, downscale dimensionally from source
             if best_buf and len(best_buf) > target_bytes:
                 scale = 0.85
-                curr_img = img
                 while scale >= 0.2:
-                    new_w = max(10, int(curr_img.width * scale))
-                    new_h = max(10, int(curr_img.height * scale))
-                    curr_img = curr_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                    buf = io.BytesIO()
-                    curr_img.save(buf, format=fmt, quality=35, optimize=True)
-                    if buf.tell() <= target_bytes * 1.05:
-                        return buf.getvalue(), buf.tell()
+                    new_w = max(10, int(img.width * scale))
+                    new_h = max(10, int(img.height * scale))
+                    with img.resize((new_w, new_h), Image.Resampling.LANCZOS) as resized_img:
+                        buf = io.BytesIO()
+                        resized_img.save(buf, format=fmt, quality=35, optimize=True)
+                        if buf.tell() <= target_bytes * 1.05:
+                            return buf.getvalue(), buf.tell()
                     scale *= 0.8
 
             if best_buf is not None:

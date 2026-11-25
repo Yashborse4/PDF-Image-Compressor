@@ -223,9 +223,16 @@ class DocuToolsMainWindow(QMainWindow):
 
     def _navigate_to_page(self, page_id: str) -> None:
         """Switch active page with smooth transition and update header breadcrumb."""
+        sub_tab = None
+        if ":" in page_id:
+            page_id, sub_tab = page_id.split(":", 1)
+
         if page_id in self.pages:
             target = self.pages[page_id]
             self.stack.fade_to_widget(target)
+
+            if sub_tab and hasattr(target, "switch_to_tab"):
+                target.switch_to_tab(sub_tab)
 
             title, sub = self.PAGE_TITLES.get(page_id, ("DocuTools", ""))
             self.header_title.setText(title)
@@ -244,9 +251,17 @@ class DocuToolsMainWindow(QMainWindow):
         if not query:
             return
 
-        if any(w in query for w in ["merge", "split", "reorder", "organize", "page", "protect", "lock"]):
-            self._navigate_to_page("pdf_tools")
-        elif any(w in query for w in ["edit", "annotation", "annotate", "text", "sign", "highlight"]):
+        if any(w in query for w in ["compress", "shrink", "deflate"]):
+            self._navigate_to_page("pdf_tools:compress")
+        elif any(w in query for w in ["split", "extract", "range", "burst"]):
+            self._navigate_to_page("pdf_tools:split")
+        elif any(w in query for w in ["protect", "lock", "encrypt", "password"]):
+            self._navigate_to_page("pdf_tools:protect")
+        elif any(w in query for w in ["merge", "reorder", "organize", "page"]):
+            self._navigate_to_page("pdf_tools:organize")
+        elif any(w in query for w in ["sign", "signature", "certificate", "pades"]):
+            self._navigate_to_page("pdf_tools:sign")
+        elif any(w in query for w in ["edit", "annotation", "annotate", "text", "highlight"]):
             self._navigate_to_page("pdf_editor")
         elif any(w in query for w in ["doc", "docx", "word", "rich", "write"]):
             self._navigate_to_page("doc_editor")

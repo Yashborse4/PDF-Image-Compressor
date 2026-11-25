@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import qtawesome as qta
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QDragEnterEvent, QDragLeaveEvent, QDropEvent, QFont, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
@@ -42,7 +43,6 @@ class FluentCard(QFrame):
         header_layout.setSpacing(12)
 
         if icon_name:
-            import qtawesome as qta
             icon_badge = QFrame()
             icon_badge.setStyleSheet(
                 "background-color: rgba(96, 205, 255, 0.12); "
@@ -69,7 +69,6 @@ class FluentCard(QFrame):
         header_layout.addStretch()
 
         # Chevron arrow indicator
-        import qtawesome as qta
         chevron = QLabel()
         chevron.setPixmap(qta.icon("fa5s.chevron-right", color="#6b7280").pixmap(QSize(12, 12)))
         header_layout.addWidget(chevron)
@@ -107,7 +106,6 @@ class StatCard(QFrame):
         layout.setSpacing(14)
 
         if icon_name:
-            import qtawesome as qta
             icon_circle = QFrame()
             icon_circle.setStyleSheet(
                 "background-color: rgba(96, 205, 255, 0.12); "
@@ -175,7 +173,6 @@ class FileDropArea(QFrame):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(8)
 
-        import qtawesome as qta
         self.icon_lbl = QLabel()
         self.icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_lbl.setPixmap(qta.icon("fa5s.cloud-upload-alt", color="#60cdff").pixmap(QSize(40, 40)))

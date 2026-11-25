@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="DocuTools Desktop Suite"
+           Language="1033"
+           Version="1.0.0.0"
+           Manufacturer="DocuTools"
+           UpgradeCode="4F27F2D1-B89B-4D88-9990-2B3E93C385C2">
+    <Package InstallerVersion="300"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Platform="x64"
+             Description="DocuTools - 100% Offline Universal Document &amp; PDF Suite" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="docutools\assets\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Yashborse4/PDF-Image-Compressor" />
+
+    <Feature Id="ProductFeature" Title="DocuTools Desktop Suite" Level="1">
+      <ComponentGroupRef Id="DocuToolsComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="DocuTools" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="DocuTools" />
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="7D854F91-1BC4-44EE-A2F0-F6D82F7B01A9">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="DocuTools"
+                  Description="Universal Offline Document and PDF Suite"
+                  Target="[INSTALLFOLDER]DocuTools.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RemoveFolder Id="CleanUpShortCut" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\DocuTools" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="E6B201F8-86A9-4A9B-983C-1DC37F151C33">
+        <Shortcut Id="ApplicationDesktopShortcut"
+                  Name="DocuTools"
+                  Description="Universal Offline Document and PDF Suite"
+                  Target="[INSTALLFOLDER]DocuTools.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\DocuTools" Name="desktop_shortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+  </Product>
+</Wix>

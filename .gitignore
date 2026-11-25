@@ -11,7 +11,11 @@ build/
 dist/
 vendor/
 packages/
+tools/
 *.zip
+*.msi
+*.wixobj
+installer/DocuToolsFiles.wxs
 
 # Virtual environment
 .venv/

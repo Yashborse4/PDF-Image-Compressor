@@ -516,6 +516,7 @@ class PDFEngine:
         temp_intermediate = io.BytesIO()
         doc = fitz.open(str(src_p))
         total_pages = len(doc)
+        seen_xrefs: set[int] = set()
 
         for p_idx in range(total_pages):
             if progress_callback:
@@ -525,6 +526,9 @@ class PDFEngine:
             page = doc[p_idx]
             for img_info in page.get_images():
                 xref = img_info[0]
+                if xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
                 try:
                     base_image = doc.extract_image(xref)
                     image_bytes = base_image["image"]
@@ -532,21 +536,21 @@ class PDFEngine:
 
                     # Only compress photos/raster images over 30KB
                     if len(image_bytes) > 30 * 1024 and image_ext in ("jpeg", "jpg", "png"):
-                        pil_img = Image.open(io.BytesIO(image_bytes))
-                        if pil_img.mode in ("RGBA", "P"):
-                            pil_img = pil_img.convert("RGB")
-                        
-                        # Downsample if dimensions are excessively large (>2000px)
-                        max_dim = 1600 if quality_level == "low" else 2200
-                        if max(pil_img.size) > max_dim:
-                            pil_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                        with Image.open(io.BytesIO(image_bytes)) as pil_img:
+                            if pil_img.mode in ("RGBA", "P"):
+                                pil_img = pil_img.convert("RGB")
 
-                        compressed_img_buf = io.BytesIO()
-                        pil_img.save(compressed_img_buf, format="JPEG", quality=target_img_quality, optimize=True)
-                        new_bytes = compressed_img_buf.getvalue()
+                            # Downsample if dimensions are excessively large (>2000px)
+                            max_dim = 1600 if quality_level == "low" else 2200
+                            if max(pil_img.size) > max_dim:
+                                pil_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
 
-                        if len(new_bytes) < len(image_bytes):
-                            page.replace_image(xref, stream=new_bytes)
+                            compressed_img_buf = io.BytesIO()
+                            pil_img.save(compressed_img_buf, format="JPEG", quality=target_img_quality, optimize=True)
+                            new_bytes = compressed_img_buf.getvalue()
+
+                            if len(new_bytes) < len(image_bytes):
+                                page.replace_image(xref, stream=new_bytes)
                 except Exception:
                     # Non-fatal image skip
                     continue

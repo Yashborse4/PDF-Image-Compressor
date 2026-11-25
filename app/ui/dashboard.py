@@ -120,6 +120,22 @@ class DashboardView(QWidget):
         stats_layout.addWidget(self.stat_privacy)
         self.layout.addLayout(stats_layout)
 
+    def refresh_stats(self) -> None:
+        """Fetch updated statistics and refresh stat cards."""
+        stats_data = self.history_mgr.get_statistics()
+        total_tasks = str(stats_data.get("total_tasks", 0))
+        saved_bytes = FileManager.format_file_size(stats_data.get("total_bytes_saved", 0))
+        if hasattr(self, "stat_processed"):
+            self.stat_processed.update_value(total_tasks)
+        if hasattr(self, "stat_saved"):
+            self.stat_saved.update_value(saved_bytes)
+
+    def showEvent(self, event) -> None:
+        """Refresh dynamic stats and recent files upon navigating to dashboard."""
+        super().showEvent(event)
+        self.refresh_stats()
+        self.refresh_recent_files()
+
     def _build_drop_zone(self) -> None:
         self.drop_area = FileDropArea(
             prompt_text="Drag & drop any PDF, Word document, or image here to begin",
@@ -139,10 +155,10 @@ class DashboardView(QWidget):
 
         tools = [
             (
-                "PDF Tools",
-                "Merge multiple PDFs, split into ranges, rotate, reorder, or delete pages.",
+                "PDF Organize & Merge",
+                "Merge multiple PDFs, visual page reordering, rotation, and deletion.",
                 "fa5s.file-pdf",
-                "pdf_tools",
+                "pdf_tools:organize",
             ),
             (
                 "PDF Editor",
@@ -154,7 +170,13 @@ class DashboardView(QWidget):
                 "PDF Compressor",
                 "Lossless stream compression & high-ratio raster image downsampling.",
                 "fa5s.compress-arrows-alt",
-                "pdf_tools",
+                "pdf_tools:compress",
+            ),
+            (
+                "PDF Splitter",
+                "Split by custom page ranges, extract pages, or burst into individual files.",
+                "fa5s.cut",
+                "pdf_tools:split",
             ),
             (
                 "Document Editor",
@@ -173,6 +195,12 @@ class DashboardView(QWidget):
                 "Concurrent multi-file image optimization and conversion queue.",
                 "fa5s.layer-group",
                 "batch",
+            ),
+            (
+                "Digital Signatures",
+                "PAdES cryptographic signatures, certificate manager, and integrity verification.",
+                "fa5s.file-signature",
+                "pdf_tools:sign",
             ),
         ]
 

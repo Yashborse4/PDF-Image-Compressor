@@ -187,7 +187,9 @@ class BatchProcessingView(QWidget):
         self._refresh_table()
 
     def _refresh_table(self) -> None:
+        self.table_queue.setSortingEnabled(False)
         self.table_queue.setRowCount(len(self.queue_items))
+        cell_flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         for row, f_str in enumerate(self.queue_items):
             p = Path(f_str)
             item_name = QTableWidgetItem(p.name)
@@ -195,6 +197,9 @@ class BatchProcessingView(QWidget):
             item_out = QTableWidgetItem("-")
             item_sav = QTableWidgetItem("-")
             item_status = QTableWidgetItem("Queued")
+
+            for it in (item_name, item_size, item_out, item_sav, item_status):
+                it.setFlags(cell_flags)
 
             self.table_queue.setItem(row, 0, item_name)
             self.table_queue.setItem(row, 1, item_size)

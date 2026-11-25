@@ -35,8 +35,10 @@ class Database:
 
     @contextmanager
     def _get_connection(self):
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
         try:
             yield conn
             conn.commit()
@@ -44,7 +46,7 @@ class Database:
             conn.close()
 
     def _init_db(self) -> None:
-        """Create tables if they do not exist."""
+        """Create tables and performance indices if they do not exist."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
@@ -67,6 +69,9 @@ class Database:
                     last_opened REAL NOT NULL
                 )
             """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_recent_files_last_opened ON recent_files(last_opened DESC);
+            """)
 
             # Operations history table
             cursor.execute("""
@@ -82,6 +87,9 @@ class Database:
                     error_message TEXT,
                     created_at REAL NOT NULL
                 )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at DESC);
             """)
 
             # Default settings
