@@ -1,22 +1,21 @@
 # Build the Windows installer (Inno Setup) from the already-built onedir bundle.
-# Assumes scripts\package.ps1 has produced dist\pdf-editor\ first.
-# Version is read from the single source of truth: pyproject.toml [project].version.
 # Usage:  .\scripts\build_installer.ps1 [-InnoSetupPath <path to ISCC.exe>]
 param(
     [string]$InnoSetupPath
 )
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\.."
-$iss = Join-Path $root "installer\pdf-editor.iss"
-$bundleExe = Join-Path $root "dist\pdf-editor\pdf-editor.exe"
+$iss = Join-Path $root "installer\docutools.iss"
+$bundleExe = Join-Path $root "dist\DocuTools\DocuTools.exe"
 
 if (-not (Test-Path $iss)) {
     Write-Error "Installer script not found: $iss"
     exit 1
 }
 if (-not (Test-Path $bundleExe)) {
-    Write-Error "Onedir bundle not found ($bundleExe). Run scripts\package.ps1 first."
-    exit 1
+    Write-Host "Onedir bundle not found ($bundleExe). Running build_docutools.ps1 first..." -ForegroundColor Yellow
+    & (Join-Path $PSScriptRoot "build_docutools.ps1") -SkipZip
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 # --- Version: single source of truth = pyproject.toml [project].version ---
@@ -35,16 +34,13 @@ if ($InnoSetupPath) {
     }
 } else {
     $candidates = @(
+        (Get-Command iscc.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source),
+        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
-        (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"),
-        # winget increasingly installs Inno Setup per-user, not to Program Files.
-        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe")
+        (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
     )
     foreach ($c in $candidates) {
         if ($c -and (Test-Path $c)) { $iscc = $c; break }
-    }
-    if (-not $iscc) {
-        try { $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source } catch { }
     }
 }
 if (-not $iscc) {
@@ -53,14 +49,19 @@ if (-not $iscc) {
 }
 Write-Host "Using ISCC: $iscc"
 
-# --- Compile the installer (version flows in via the preprocessor define) ---
-& $iscc "/DAppVersion=$version" $iss
+# --- Compile the installer ---
+New-Item -ItemType Directory -Force -Path (Join-Path $root "dist\installer") | Out-Null
+& $iscc "/DMyAppVersion=$version" $iss
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$setup = Join-Path $root "dist\pdf-editor-setup-$version.exe"
+$setup = Join-Path $root "dist\installer\DocuTools-Setup-v$version.exe"
 if (-not (Test-Path $setup)) {
     Write-Error "ISCC reported success but the setup exe was not found at $setup"
     exit 1
 }
-Write-Host "Installer built: $setup"
+$setupMB = [math]::Round((Get-Item $setup).Length / 1MB, 2)
+Write-Host "========================================" -ForegroundColor Green
+Write-Host " Inno Setup Installer successfully built!" -ForegroundColor Green
+Write-Host " Path: $setup ($setupMB MB)             " -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
 exit 0

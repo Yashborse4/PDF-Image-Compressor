@@ -851,7 +851,7 @@ class PDFManagerView(QWidget):
         card_layout.addWidget(grp_out)
 
         # Run action
-        btn_run_compress = QPushButton("⚡ Compress PDF Now")
+        btn_run_compress = QPushButton("Compress PDF Now")
         btn_run_compress.setProperty("class", "primaryButton")
         btn_run_compress.setMinimumHeight(42)
         btn_run_compress.setStyleSheet("font-size: 13px; font-weight: 700;")

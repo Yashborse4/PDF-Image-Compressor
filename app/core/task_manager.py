@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from PySide6.QtCore import QObject, QThreadPool, Signal
 
 from app.core.logging import get_logger
-from app.workers.background_worker import BackgroundWorker
+
+if TYPE_CHECKING:
+    from app.workers.background_worker import BackgroundWorker
 
 logger = get_logger("task_manager")
 
@@ -44,6 +46,8 @@ class TaskManager(QObject):
         **kwargs: Any,
     ) -> BackgroundWorker:
         """Enqueue a callable onto the thread pool and attach signal listeners."""
+        from app.workers.background_worker import BackgroundWorker
+
         worker = BackgroundWorker(task_fn, *args, **kwargs)
 
         if on_progress:

@@ -3,6 +3,8 @@
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\.."
+Push-Location $root
+try {
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host " Building DocuTools Windows MSI Package " -ForegroundColor Cyan
@@ -52,7 +54,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 4. Compile WiX sources
 Write-Host "Compiling WiX source files (candle.exe)..." -ForegroundColor Yellow
-& $candle -nologo -arch x64 "-dSourceDir=$sourceDir" -out "$distInstallerDir\" $productWxs $harvestedWxs
+& $candle -nologo -arch x64 "-dSourceDir=$sourceDir" -out "$distInstallerDir\\" $productWxs $harvestedWxs
 if ($LASTEXITCODE -ne 0) {
     Write-Error "candle.exe compilation failed"
     exit $LASTEXITCODE
@@ -77,4 +79,7 @@ if (Test-Path $msiOut) {
 } else {
     Write-Error "MSI output was not found at $msiOut"
     exit 1
+}
+} finally {
+    Pop-Location
 }
