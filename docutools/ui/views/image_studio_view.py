@@ -286,9 +286,11 @@ class ImageStudioView(QWidget):
         layout.addWidget(drop_batch)
 
         # Batch Queue Table
-        self.table_batch = QTableWidget(0, 5)
-        self.table_batch.setHorizontalHeaderLabels(["File Name", "Original Size", "Optimized Size", "Savings", "Status"])
+        self.table_batch = QTableWidget(0, 6)
+        self.table_batch.setHorizontalHeaderLabels(["File Name", "Original Size", "Optimized Size", "Savings", "Status", ""])
         self.table_batch.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table_batch.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table_batch.setColumnWidth(5, 44)
         layout.addWidget(self.table_batch, stretch=1)
 
         # Batch settings row
@@ -489,6 +491,21 @@ class ImageStudioView(QWidget):
             self.table_batch.setItem(row, 3, item_save)
             self.table_batch.setItem(row, 4, item_status)
 
+            btn_remove = QPushButton("✕")
+            btn_remove.setToolTip("Remove from queue")
+            btn_remove.setFixedSize(28, 28)
+            btn_remove.setStyleSheet(
+                "QPushButton { background: transparent; color: #9ca3af; border: none; font-weight: bold; font-size: 14px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: rgba(239, 68, 68, 0.2); color: #ef4444; }"
+            )
+            btn_remove.clicked.connect(lambda _=False, r=row: self._remove_batch_item(r))
+            self.table_batch.setCellWidget(row, 5, btn_remove)
+
+    def _remove_batch_item(self, row: int) -> None:
+        if 0 <= row < len(self.batch_files):
+            self.batch_files.pop(row)
+            self._refresh_batch_table()
+
     def _clear_batch(self) -> None:
         self.batch_files.clear()
         self._refresh_batch_table()
@@ -522,7 +539,7 @@ class ImageStudioView(QWidget):
                 target_kb=target_kb
             )
 
-        batch_worker = BatchWorker(self.batch_files, batch_process_fn)
+        batch_worker = BatchWorker(list(self.batch_files), batch_process_fn)
         batch_worker.signals.item_finished.connect(self._on_batch_item_finished)
         batch_worker.signals.all_finished.connect(self._on_batch_all_finished)
         self.thread_pool.start(batch_worker)
@@ -538,6 +555,7 @@ class ImageStudioView(QWidget):
     def _on_batch_all_finished(self, all_results: List[Any]) -> None:
         self.progress_card.complete_task(f"All {len(all_results)} images processed successfully!")
         self.db.log_operation("Image Studio", "Batch Optimization", status="success")
+        self._clear_batch()
         QMessageBox.information(self, "Batch Complete", f"Successfully processed all {len(all_results)} images!")
 
     def _on_worker_error(self, title: str, error_msg: str) -> None:

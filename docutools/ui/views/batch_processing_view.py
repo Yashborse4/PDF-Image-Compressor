@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -34,6 +35,7 @@ from docutools.core.image_engine import ImageEngine
 from docutools.core.pdf_engine import PDFEngine
 from docutools.core.validator import format_file_size, get_file_type
 from docutools.ui.components.drop_zone import DropZone
+from docutools.ui.components.pdf_preview_widget import PDFPreviewWidget
 from docutools.ui.components.progress_card import ProgressCard
 from docutools.workers.batch_worker import BatchWorker
 
@@ -115,12 +117,23 @@ class BatchProcessingView(QWidget):
         self.drop_zone.files_dropped.connect(self._add_files)
         main_layout.addWidget(self.drop_zone)
 
-        # Batch Queue Table
-        self.table_queue = QTableWidget(0, 5)
-        self.table_queue.setHorizontalHeaderLabels(["File Name", "Original Size", "Output File", "Savings", "Status"])
+        # Batch Queue Table + Instant Output Viewer
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.table_queue = QTableWidget(0, 6)
+        self.table_queue.setHorizontalHeaderLabels(["File Name", "Original Size", "Output File", "Savings", "Status", ""])
         self.table_queue.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table_queue.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        main_layout.addWidget(self.table_queue, stretch=1)
+        self.table_queue.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table_queue.setColumnWidth(5, 44)
+        self.splitter.addWidget(self.table_queue)
+
+        self.preview_widget = PDFPreviewWidget()
+        self.preview_widget.close_requested.connect(self.preview_widget.hide)
+        self.preview_widget.hide()
+        self.splitter.addWidget(self.preview_widget)
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 2)
+        main_layout.addWidget(self.splitter, stretch=1)
 
         # Bottom Bar: Output Folder & Controls
         bottom_frame = QFrame()
@@ -207,6 +220,21 @@ class BatchProcessingView(QWidget):
             self.table_queue.setItem(row, 3, item_sav)
             self.table_queue.setItem(row, 4, item_status)
 
+            btn_remove = QPushButton("✕")
+            btn_remove.setToolTip("Remove from queue")
+            btn_remove.setFixedSize(28, 28)
+            btn_remove.setStyleSheet(
+                "QPushButton { background: transparent; color: #9ca3af; border: none; font-weight: bold; font-size: 14px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: rgba(239, 68, 68, 0.2); color: #ef4444; }"
+            )
+            btn_remove.clicked.connect(lambda _=False, r=row: self._remove_queue_item(r))
+            self.table_queue.setCellWidget(row, 5, btn_remove)
+
+    def _remove_queue_item(self, row: int) -> None:
+        if 0 <= row < len(self.queue_items):
+            self.queue_items.pop(row)
+            self._refresh_table()
+
     def _clear_queue(self) -> None:
         self.queue_items.clear()
         self._refresh_table()
@@ -216,7 +244,12 @@ class BatchProcessingView(QWidget):
             QMessageBox.warning(self, "Queue Empty", "Please add files to batch process.")
             return
 
-        out_dir = Path(self.txt_out_dir.text().strip())
+        default_dir = self.txt_out_dir.text().strip() or str(Path.home() / "Documents")
+        chosen_dir = QFileDialog.getExistingDirectory(self, "Select Export Location", default_dir)
+        if not chosen_dir:
+            return
+        self.txt_out_dir.setText(chosen_dir)
+        out_dir = Path(chosen_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
         op_idx = self.combo_op.currentIndex()
@@ -236,8 +269,8 @@ class BatchProcessingView(QWidget):
                 target_map = {0: 50, 1: 100, 2: 200, 3: 500}
                 out_p = out_dir / f"{p.stem}_opt{p.suffix}"
                 return ImageEngine.process_single_image(p, out_p, target_kb=target_map[param_idx])
-            elif op_idx == 2:  # PDF to Images
-                return ConversionEngine.pdf_to_images(p, out_dir, image_format="PNG", dpi=150)
+            elif op_idx == 2:  # PDF to Images (full resolution)
+                return ConversionEngine.pdf_to_images(p, out_dir, image_format="PNG", dpi=300)
             elif op_idx == 3:  # Images to PDF
                 out_p = out_dir / f"{p.stem}.pdf"
                 return ConversionEngine.images_to_pdf([p], out_p)
@@ -246,7 +279,7 @@ class BatchProcessingView(QWidget):
                 return ConversionEngine.docx_to_pdf(p, out_p)
             return None
 
-        self.current_worker = BatchWorker(self.queue_items, process_item_fn)
+        self.current_worker = BatchWorker(list(self.queue_items), process_item_fn)
         self.current_worker.signals.item_finished.connect(self._on_item_finished)
         self.current_worker.signals.item_error.connect(self._on_item_error)
         self.current_worker.signals.all_finished.connect(self._on_all_finished)
@@ -282,6 +315,13 @@ class BatchProcessingView(QWidget):
         self.btn_cancel.setEnabled(False)
         self.progress_card.complete_task(f"Batch completed: {len(results)} files processed.")
         self.db.log_operation("Batch Center", self.combo_op.currentText(), status="success")
+        self._clear_queue()
+        for res in results:
+            cand = res.get("file_path") if isinstance(res, dict) else (res if isinstance(res, str) else None)
+            if cand and str(cand).lower().endswith(".pdf") and Path(cand).is_file():
+                self.preview_widget.load_pdf(cand, is_output=True)
+                self.preview_widget.show()
+                break
         QMessageBox.information(self, "Batch Complete", f"Batch execution completed for {len(results)} items.")
 
     def _cancel_batch(self) -> None:

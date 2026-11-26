@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -145,6 +146,18 @@ class DigitalSignatureDialog(QDialog):
         file_lay.addWidget(btn_run_verify)
         layout.addWidget(file_box)
 
+        # Minimal-interaction info + Automatic Network Status
+        info_row = QHBoxLayout()
+        lbl_pub_hint = QLabel("Verifies automatically using the public key embedded in the signing certificate (no private key required).")
+        lbl_pub_hint.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        info_row.addWidget(lbl_pub_hint, stretch=1)
+
+        self.lbl_net_status = QLabel("● Checking network...")
+        self.lbl_net_status.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        info_row.addWidget(self.lbl_net_status)
+        layout.addLayout(info_row)
+        self._update_network_status()
+
         # Verdict Banner Frame
         self.banner_frame = QFrame()
         self.banner_frame.setStyleSheet("""
@@ -196,14 +209,37 @@ class DigitalSignatureDialog(QDialog):
             self.txt_verify_path.setText(path)
             self._execute_verification()
 
+    def _update_network_status(self) -> None:
+        net = PDFEngine.check_online_cert_status(timeout=0.5)
+        if net["online"]:
+            self.lbl_net_status.setText(f"🟢 {net['status_text']}")
+            self.lbl_net_status.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 600;")
+        else:
+            self.lbl_net_status.setText(f"🟡 {net['status_text']}")
+            self.lbl_net_status.setStyleSheet("color: #fbbf24; font-size: 11px; font-weight: 600;")
+
     def _execute_verification(self) -> None:
         file_path = self.txt_verify_path.text().strip()
         if not file_path or not Path(file_path).is_file():
             QMessageBox.warning(self, "Invalid File", "Please select a valid PDF file to verify.")
             return
 
+        self._update_network_status()
+
+        password: Optional[str] = None
+        if PDFEngine.is_pdf_encrypted(file_path):
+            pwd, ok = QInputDialog.getText(
+                self,
+                "Encrypted PDF",
+                "This PDF is password-protected.\nEnter the PDF password to verify signatures:",
+                QLineEdit.EchoMode.Password,
+            )
+            if not ok:
+                return
+            password = pwd
+
         try:
-            results = PDFEngine.verify_signatures(file_path)
+            results = PDFEngine.verify_signatures(file_path, password=password)
             self.table_signatures.setRowCount(0)
 
             if not results:

@@ -68,12 +68,29 @@ def generate_qss(mode: ThemeMode = "dark") -> str:
         outline: none;
     }}
 
-    QMainWindow, QDialog {{
+    QMainWindow, QDialog, QScrollArea, #centralWorkArea {{
         background-color: {c["bg_main"]};
     }}
 
     QWidget {{
         background-color: transparent;
+    }}
+
+    /* Drop Zone (Theme-Adaptive) */
+    #FileDropArea {{
+        border: 2px dashed {c["border_light"]};
+        border-radius: 14px;
+        background-color: {c["bg_card"]};
+    }}
+
+    #FileDropArea:hover {{
+        border: 2px dashed {c["accent"]};
+        background-color: {c["accent_subtle"]};
+    }}
+
+    #FileDropArea QLabel {{
+        border: none;
+        background: transparent;
     }}
 
     /* Sidebar Navigation Container */
@@ -279,7 +296,8 @@ def generate_qss(mode: ThemeMode = "dark") -> str:
     QHeaderView::section {{
         background-color: {c["bg_sidebar"]};
         color: {c["text_secondary"]};
-        padding: 8px 12px;
+        padding: 6px 12px;
+        min-height: 26px;
         border: none;
         border-bottom: 1px solid {c["border"]};
         font-weight: 600;
@@ -373,5 +391,18 @@ def generate_qss(mode: ThemeMode = "dark") -> str:
 
 def apply_theme(app: QApplication, mode: ThemeMode = "dark") -> None:
     """Apply the styled QSS stylesheet and Qt palette to the application."""
+    c = DARK_PALETTE if mode == "dark" else LIGHT_PALETTE
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(c["bg_main"]))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(c["text_primary"]))
+    palette.setColor(QPalette.ColorRole.Base, QColor(c["bg_input"]))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(c["bg_card"]))
+    palette.setColor(QPalette.ColorRole.Text, QColor(c["text_primary"]))
+    palette.setColor(QPalette.ColorRole.Button, QColor(c["bg_card"]))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(c["text_primary"]))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(c["accent"]))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(palette)
+
     qss = generate_qss(mode)
     app.setStyleSheet(qss)

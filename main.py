@@ -36,6 +36,12 @@ def main() -> int:
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("DocuTools")
 
+    from docutools.core.assets import get_app_icon_path
+
+    icon_path = get_app_icon_path(ico=True)
+    if Path(icon_path).exists():
+        app.setWindowIcon(QIcon(icon_path))
+
     # 4. Load preferences & apply theme
     settings = Settings.get_instance()
     theme_mode = settings.get("theme", "dark")

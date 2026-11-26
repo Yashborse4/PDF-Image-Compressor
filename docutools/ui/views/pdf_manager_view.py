@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -49,6 +50,7 @@ from docutools.core.validator import format_file_size, validate_file
 from docutools.ui.components.digital_signature_dialog import DigitalSignatureDialog
 from docutools.ui.components.drop_zone import DropZone
 from docutools.ui.components.page_preview_dialog import PagePreviewDialog
+from docutools.ui.components.pdf_preview_widget import PDFPreviewWidget
 from docutools.ui.components.progress_card import ProgressCard
 from docutools.ui.components.thumbnail_card import ThumbnailCard
 from docutools.workers.task_worker import TaskWorker
@@ -66,7 +68,9 @@ class PDFManagerView(QWidget):
 
         self.loaded_documents: List[Dict[str, Any]] = []
         self.pages_data: List[Dict[str, Any]] = []
+        self._undo_stack: List[List[Dict[str, Any]]] = []
         self.thumbnail_widgets: List[ThumbnailCard] = []
+        self.remover_widgets: List[ThumbnailCard] = []
 
         self.thumbnail_card_w: int = 180
         self.thumbnail_card_h: int = 255
@@ -89,61 +93,33 @@ class PDFManagerView(QWidget):
 
     def _init_ui(self) -> None:
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(18, 16, 18, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(16, 12, 16, 14)
+        main_layout.setSpacing(10)
 
-        # Header Title
-        header_row = QHBoxLayout()
-        title_box = QVBoxLayout()
-        lbl_heading = QLabel("PDF Studio & Manager")
-        lbl_heading.setProperty("class", "heading")
-        lbl_sub = QLabel("Combine multiple PDFs, remove unneeded pages, reorder, compress, and protect — all in one window.")
-        lbl_sub.setProperty("class", "subheading")
-        title_box.addWidget(lbl_heading)
-        title_box.addWidget(lbl_sub)
-        header_row.addLayout(title_box)
-        header_row.addStretch()
-
-        self.btn_open_pdf = QPushButton("➕ Add PDF(s)...")
-        self.btn_open_pdf.setProperty("class", "primaryButton")
-        self.btn_open_pdf.setStyleSheet("font-weight: 600; padding: 6px 14px;")
-        self.btn_open_pdf.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_open_pdf.clicked.connect(self._select_multiple_pdfs_dialog)
-        header_row.addWidget(self.btn_open_pdf)
-
-        main_layout.addLayout(header_row)
-
-        # Global Progress Card
-        self.progress_card = ProgressCard()
-        main_layout.addWidget(self.progress_card)
-
-        # Operation Mode Switcher Ribbon
+        # Unified Enterprise Mode Toolbar (Single Navigation Control + Primary CTA)
         ribbon_frame = QFrame()
+        ribbon_frame.setObjectName("pdfNavRibbon")
         ribbon_frame.setStyleSheet("""
-            QFrame {
-                background-color: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                padding: 4px;
+            #pdfNavRibbon {
+                background-color: #18191e;
+                border: 1px solid #2b2d36;
+                border-radius: 10px;
             }
         """)
         ribbon_lay = QHBoxLayout(ribbon_frame)
-        ribbon_lay.setContentsMargins(6, 4, 6, 4)
-        ribbon_lay.setSpacing(6)
-
-        lbl_modes = QLabel("Quick Navigation:")
-        lbl_modes.setStyleSheet("font-weight: 700; color: #94a3b8; font-size: 11px;")
-        ribbon_lay.addWidget(lbl_modes)
+        ribbon_lay.setContentsMargins(8, 6, 8, 6)
+        ribbon_lay.setSpacing(4)
 
         self.mode_btn_group = QButtonGroup(self)
         self.mode_btn_group.setExclusive(True)
         mode_buttons = [
-            ("📑 Organize & Merge", 0),
-            ("✂️ Split & Extract", 1),
-            ("📉 Compress PDF", 2),
-            ("🔒 Password Protect", 3),
-            ("🔏 Digital Sign", 4),
-            ("✏️ Edit Text", 5),
+            ("📑 Organize && Merge", 0),
+            ("🗑️ Page Remover", 1),
+            ("✂️ Split && Extract", 2),
+            ("📉 Compress", 3),
+            ("🔒 Protect", 4),
+            ("🔏 Digital Sign", 5),
+            ("✏️ Edit Content", 6),
         ]
         for label, tab_idx in mode_buttons:
             btn = QPushButton(label)
@@ -152,11 +128,11 @@ class PDFManagerView(QWidget):
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: transparent;
-                    color: #cbd5e1;
+                    color: #9ca3af;
                     border: 1px solid transparent;
-                    border-radius: 6px;
-                    padding: 5px 12px;
-                    font-size: 11px;
+                    border-radius: 7px;
+                    padding: 7px 14px;
+                    font-size: 12px;
                     font-weight: 600;
                 }
                 QPushButton:hover {
@@ -176,33 +152,115 @@ class PDFManagerView(QWidget):
                 btn.setChecked(True)
 
         ribbon_lay.addStretch()
+
+        self.btn_toggle_preview = QPushButton("👁 Preview")
+        self.btn_toggle_preview.setCheckable(True)
+        self.btn_toggle_preview.setChecked(False)
+        self.btn_toggle_preview.setToolTip("Toggle Live PDF Preview & Instant Output Viewer")
+        self.btn_toggle_preview.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_toggle_preview.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #cbd5e1;
+                border: 1px solid #363844;
+                border-radius: 7px;
+                padding: 7px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.06);
+                color: #ffffff;
+            }
+            QPushButton:checked {
+                background-color: rgba(96, 205, 255, 0.16);
+                color: #60cdff;
+                border: 1px solid rgba(96, 205, 255, 0.4);
+            }
+        """)
+        self.btn_toggle_preview.toggled.connect(self._toggle_preview_pane)
+        ribbon_lay.addWidget(self.btn_toggle_preview)
+
+        self.btn_open_pdf = QPushButton("➕ Add PDF(s)...")
+        self.btn_open_pdf.setProperty("variant", "accent")
+        self.btn_open_pdf.setStyleSheet(
+            "background-color: #0078d4; color: #ffffff; border: none; "
+            "border-radius: 7px; font-weight: 600; padding: 7px 16px;"
+        )
+        self.btn_open_pdf.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_open_pdf.clicked.connect(self._select_multiple_pdfs_dialog)
+        ribbon_lay.addWidget(self.btn_open_pdf)
+
         main_layout.addWidget(ribbon_frame)
 
-        # Main Navigation Tabs
+        # Global Progress Card
+        self.progress_card = ProgressCard()
+        main_layout.addWidget(self.progress_card)
+
+        # Main Workspace Container (QTabBar hidden — controlled cleanly by top segmented bar)
         self.tabs = QTabWidget()
+        self.tabs.tabBar().hide()
+        self.tabs.setDocumentMode(True)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.tab_studio = QWidget()
+        self.tab_remover = QWidget()
         self.tab_split = QWidget()
         self.tab_compress = QWidget()
         self.tab_protect = QWidget()
         self.tab_sign = QWidget()
         self.tab_editor = QWidget()
 
-        self.tabs.addTab(self.tab_studio, "📑 Organize & Merge")
-        self.tabs.addTab(self.tab_split, "✂️ Split & Extract")
-        self.tabs.addTab(self.tab_compress, "📉 Compress & Optimize")
-        self.tabs.addTab(self.tab_protect, "🔒 Password & Permissions")
-        self.tabs.addTab(self.tab_sign, "🔏 Digital Signatures")
-        self.tabs.addTab(self.tab_editor, "✏️ In-Place Content Editor")
+        self.tabs.addTab(self.tab_studio, "Organize & Merge")
+        self.tabs.addTab(self.tab_remover, "Page Remover")
+        self.tabs.addTab(self.tab_split, "Split & Extract")
+        self.tabs.addTab(self.tab_compress, "Compress & Optimize")
+        self.tabs.addTab(self.tab_protect, "Password & Permissions")
+        self.tabs.addTab(self.tab_sign, "Digital Signatures")
+        self.tabs.addTab(self.tab_editor, "In-Place Content Editor")
 
-        main_layout.addWidget(self.tabs, stretch=1)
+        self.workspace_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.workspace_splitter.setHandleWidth(8)
+        self.workspace_splitter.addWidget(self.tabs)
+
+        self.preview_widget = PDFPreviewWidget()
+        self.preview_widget.close_requested.connect(self._hide_preview_pane)
+        self.preview_widget.hide()
+        self.workspace_splitter.addWidget(self.preview_widget)
+        self.workspace_splitter.setStretchFactor(0, 3)
+        self.workspace_splitter.setStretchFactor(1, 2)
+
+        main_layout.addWidget(self.workspace_splitter, stretch=1)
 
         self._build_studio_tab()
+        self._build_remover_tab()
         self._build_split_tab()
         self._build_compress_tab()
         self._build_protect_tab()
         self._build_signing_tab()
         self._build_editor_tab()
+
+    def _toggle_preview_pane(self, visible: bool) -> None:
+        self.preview_widget.setVisible(visible)
+        if visible and self.preview_widget.file_path is None and self._get_first_doc_path():
+            self.preview_widget.load_pdf(self._get_first_doc_path(), is_output=False)
+
+    def _hide_preview_pane(self) -> None:
+        self.btn_toggle_preview.setChecked(False)
+        self.preview_widget.hide()
+
+    def show_input_preview(self, file_path: str | Path, password: Optional[str] = None) -> None:
+        """Load an input PDF into the live previewer (if open or when selected)."""
+        if file_path and Path(file_path).is_file():
+            self.preview_widget.load_pdf(file_path, password=password, is_output=False)
+            if not self.preview_widget.isVisible():
+                self.btn_toggle_preview.setChecked(True)
+
+    def show_output_preview(self, file_path: str | Path, password: Optional[str] = None) -> None:
+        """Immediately display an exported PDF in the Instant Output Viewer."""
+        if file_path and Path(file_path).is_file() and str(file_path).lower().endswith(".pdf"):
+            self.preview_widget.load_pdf(file_path, password=password, is_output=True)
+            if not self.preview_widget.isVisible():
+                self.btn_toggle_preview.setChecked(True)
 
     def _on_tab_changed(self, index: int) -> None:
         btn = self.mode_btn_group.button(index)
@@ -215,19 +273,25 @@ class PDFManagerView(QWidget):
             "studio": 0,
             "organize": 0,
             "merge": 0,
-            "split": 1,
-            "compress": 2,
-            "protect": 3,
-            "security": 3,
-            "sign": 4,
-            "signature": 4,
-            "editor": 5,
-            "edit": 5,
+            "remove": 1,
+            "remover": 1,
+            "delete": 1,
+            "split": 2,
+            "compress": 3,
+            "protect": 4,
+            "unprotect": 4,
+            "unlock": 4,
+            "decrypt": 4,
+            "security": 4,
+            "sign": 5,
+            "signature": 5,
+            "editor": 6,
+            "edit": 6,
         }
         if isinstance(target, str):
             idx = tab_map.get(target.lower(), 0)
         else:
-            idx = max(0, min(5, target))
+            idx = max(0, min(6, target))
         self.tabs.setCurrentIndex(idx)
         btn = self.mode_btn_group.button(idx)
         if btn:
@@ -243,9 +307,10 @@ class PDFManagerView(QWidget):
 
         # 1. Top Document Summary Strip
         self.doc_strip_frame = QFrame()
-        self.doc_strip_frame.setProperty("class", "cardFrame")
+        self.doc_strip_frame.setObjectName("docStripFrame")
         self.doc_strip_frame.setStyleSheet(
-            "background-color: #15161a; border: 1px solid #23252c; border-radius: 6px; padding: 4px;"
+            "#docStripFrame { background-color: #181a22; border: 1px solid #2b2f3c; border-radius: 8px; padding: 4px; }"
+            "#docStripFrame QLabel { border: none; background: transparent; }"
         )
         strip_layout = QHBoxLayout(self.doc_strip_frame)
         strip_layout.setContentsMargins(8, 4, 8, 4)
@@ -307,13 +372,20 @@ class PDFManagerView(QWidget):
         tb_layout.addWidget(div1)
 
         # Bulk Remove
-        self.btn_remove_selected = QPushButton("🗑️ Remove Selected Pages")
+        self.btn_remove_selected = QPushButton("🗑️ Remove Selected")
         self.btn_remove_selected.setToolTip("Delete all checked pages from the assembled document")
         self.btn_remove_selected.setStyleSheet(
             "background-color: #450a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 4px; font-weight: 600; padding: 4px 10px;"
         )
         self.btn_remove_selected.clicked.connect(self._remove_selected_pages)
         tb_layout.addWidget(self.btn_remove_selected)
+
+        # Undo button
+        self.btn_undo_studio = QPushButton("↩️ Undo")
+        self.btn_undo_studio.setEnabled(False)
+        self.btn_undo_studio.setToolTip("Restore last removed or modified page (Undo)")
+        self.btn_undo_studio.clicked.connect(self.undo_last_action)
+        tb_layout.addWidget(self.btn_undo_studio)
 
         # Bulk Rotate
         self.btn_rotate_selected = QPushButton("⟳ Rotate Selected 90°")
@@ -385,10 +457,13 @@ class PDFManagerView(QWidget):
 
         # --- Right Container: Ready & Export PDF Panel ---
         self.options_panel = QFrame()
-        self.options_panel.setProperty("class", "cardFrame")
+        self.options_panel.setObjectName("pdfOptionsPanel")
         self.options_panel.setMinimumWidth(320)
         self.options_panel.setMaximumWidth(420)
-        self.options_panel.setStyleSheet("background-color: #141519; border: 1px solid #23252c; border-radius: 8px;")
+        self.options_panel.setStyleSheet(
+            "#pdfOptionsPanel { background-color: #181a22; border: 1px solid #2b2f3c; border-radius: 10px; }"
+            "#pdfOptionsPanel QLabel, #pdfOptionsPanel QCheckBox, #pdfOptionsPanel QRadioButton { border: none; background: transparent; }"
+        )
 
         panel_scroll = QScrollArea()
         panel_scroll.setWidgetResizable(True)
@@ -738,6 +813,97 @@ class PDFManagerView(QWidget):
         layout.addWidget(self.editor_scroll, stretch=1)
 
     # =========================================================================
+    # TAB 2: SEGREGATED VISUAL PDF PAGE REMOVER (WITH CROSS DELETE & UNDO)
+    # =========================================================================
+    def _build_remover_tab(self) -> None:
+        layout = QVBoxLayout(self.tab_remover)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        # Action Bar
+        bar = QFrame()
+        bar.setObjectName("removerToolbar")
+        bar.setStyleSheet(
+            "#removerToolbar { background-color: #181a22; border: 1px solid #2b2f3c; border-radius: 10px; }"
+            "#removerToolbar QLabel { border: none; background: transparent; }"
+        )
+        bar_lay = QHBoxLayout(bar)
+        bar_lay.setContentsMargins(12, 8, 12, 8)
+        bar_lay.setSpacing(8)
+
+        lbl_r_title = QLabel("🗑️ Visual Page Remover")
+        lbl_r_title.setStyleSheet("font-weight: 700; font-size: 13.5px; color: #60cdff;")
+        bar_lay.addWidget(lbl_r_title)
+
+        btn_load = QPushButton("+ Load PDF...")
+        btn_load.clicked.connect(self._select_multiple_pdfs_dialog)
+        bar_lay.addWidget(btn_load)
+
+        btn_sel_all = QPushButton("Select All")
+        btn_sel_all.clicked.connect(self._remover_select_all)
+        bar_lay.addWidget(btn_sel_all)
+
+        btn_desel_all = QPushButton("Deselect All")
+        btn_desel_all.clicked.connect(self._remover_deselect_all)
+        bar_lay.addWidget(btn_desel_all)
+
+        self.btn_undo_remover = QPushButton("↩️ Undo")
+        self.btn_undo_remover.setEnabled(False)
+        self.btn_undo_remover.setToolTip("Restore last deleted or modified page")
+        self.btn_undo_remover.setStyleSheet(
+            "QPushButton { background-color: #1e293b; color: #93c5fd; border: 1px solid #334155; border-radius: 6px; font-weight: 600; padding: 5px 12px; }"
+            "QPushButton:disabled { color: #64748b; background-color: transparent; border-color: #272932; }"
+        )
+        self.btn_undo_remover.clicked.connect(self.undo_last_action)
+        bar_lay.addWidget(self.btn_undo_remover)
+
+        btn_remove_checked = QPushButton("🗑️ Remove Checked")
+        btn_remove_checked.setStyleSheet(
+            "background-color: #450a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 6px; font-weight: 600; padding: 5px 12px;"
+        )
+        btn_remove_checked.clicked.connect(self._remover_remove_checked)
+        bar_lay.addWidget(btn_remove_checked)
+
+        bar_lay.addStretch()
+
+        self.lbl_remover_count = QLabel("0 pages")
+        self.lbl_remover_count.setStyleSheet("color: #94a3b8; font-weight: 600; font-size: 11.5px;")
+        bar_lay.addWidget(self.lbl_remover_count)
+
+        btn_export_cleaned = QPushButton("💾 Export Cleaned PDF...")
+        btn_export_cleaned.setStyleSheet(
+            "background-color: #059669; color: #ffffff; border: none; border-radius: 7px; font-weight: 700; padding: 6px 14px;"
+        )
+        btn_export_cleaned.clicked.connect(self._execute_export_cleaned_pdf)
+        bar_lay.addWidget(btn_export_cleaned)
+
+        layout.addWidget(bar)
+
+        # Empty Drop Zone
+        self.remover_drop = DropZone(
+            title="Drop a PDF here to visually inspect and delete pages",
+            subtitle="Each page displays a large preview with a ✕ cross button to delete and ↩️ Undo to restore",
+            file_filter="PDF Documents (*.pdf)",
+            multi_select=True,
+        )
+        self.remover_drop.files_dropped.connect(self.add_pdf_files)
+        layout.addWidget(self.remover_drop)
+
+        # Scrollable Page Grid
+        self.remover_scroll = QScrollArea()
+        self.remover_scroll.setWidgetResizable(True)
+        self.remover_scroll.setStyleSheet("background-color: #0e1015; border: 1px solid #232631; border-radius: 8px;")
+        self.remover_container = QWidget()
+        self.remover_container.setStyleSheet("background-color: #0e1015;")
+        self.remover_grid = QGridLayout(self.remover_container)
+        self.remover_grid.setContentsMargins(14, 14, 14, 14)
+        self.remover_grid.setSpacing(14)
+        self.remover_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.remover_scroll.setWidget(self.remover_container)
+        self.remover_scroll.hide()
+        layout.addWidget(self.remover_scroll, stretch=1)
+
+    # =========================================================================
     # TAB 3: SPLIT DOCUMENT
     # =========================================================================
     def _build_split_tab(self) -> None:
@@ -881,7 +1047,10 @@ class PDFManagerView(QWidget):
         out = self.txt_compress_out.text().strip()
         if not out:
             src_p = Path(src)
-            out = str(src_p.parent / f"{src_p.stem}_compressed.pdf")
+            default_out = str(src_p.parent / f"{src_p.stem}_compressed.pdf")
+            out, _ = QFileDialog.getSaveFileName(self, "Save Compressed PDF As", default_out, "PDF Files (*.pdf)")
+            if not out:
+                return
             self.txt_compress_out.setText(out)
 
         idx = self.combo_compress_level.currentIndex()
@@ -914,6 +1083,7 @@ class PDFManagerView(QWidget):
                 status="success"
             )
             QMessageBox.information(self, "Compression Success", msg)
+            self.show_output_preview(out)
 
         def _on_error(err):
             self.progress_card.set_error(str(err))
@@ -921,8 +1091,8 @@ class PDFManagerView(QWidget):
 
         worker = TaskWorker(_worker_task)
         worker.signals.progress.connect(self.progress_card.update_progress)
-        worker.signals.result.connect(_on_success)
-        worker.signals.error.connect(_on_error)
+        worker.signals.finished.connect(_on_success)
+        worker.signals.error.connect(lambda err, tb: _on_error(err))
         self.thread_pool.start(worker)
 
     # =========================================================================
@@ -931,23 +1101,39 @@ class PDFManagerView(QWidget):
     def _build_protect_tab(self) -> None:
         layout = QVBoxLayout(self.tab_protect)
         layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(14)
+        layout.setSpacing(12)
 
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(10)
+
+        # --- Left Pane: Encrypt / Protect PDF ---
         card = QFrame()
-        card.setProperty("class", "cardFrame")
+        card.setObjectName("paneProtect")
+        card.setStyleSheet("""
+            #paneProtect {
+                background-color: #181a22;
+                border: 1px solid #2b2f3c;
+                border-radius: 10px;
+            }
+            #paneProtect QLabel, #paneProtect QCheckBox {
+                border: none;
+                background: transparent;
+            }
+        """)
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(16)
+        card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(12)
 
         # Header
         h_box = QHBoxLayout()
         icon_lbl = QLabel("🔒")
-        icon_lbl.setStyleSheet("font-size: 24px;")
+        icon_lbl.setStyleSheet("font-size: 22px;")
         h_box.addWidget(icon_lbl)
         h_text = QVBoxLayout()
-        t_lbl = QLabel("PDF Security & AES-256 Encryption")
-        t_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #60cdff;")
-        s_lbl = QLabel("Protect documents with user passwords and fine-grained permissions (printing, copying).")
-        s_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        t_lbl = QLabel("Protect PDF (AES-256 Encryption)")
+        t_lbl.setStyleSheet("font-size: 15px; font-weight: 700; color: #60cdff;")
+        s_lbl = QLabel("Encrypt documents with user passwords and printing/copying permissions.")
+        s_lbl.setStyleSheet("color: #94a3b8; font-size: 11.5px;")
         h_text.addWidget(t_lbl)
         h_text.addWidget(s_lbl)
         h_box.addLayout(h_text)
@@ -970,17 +1156,17 @@ class PDFManagerView(QWidget):
         # Passwords
         grp_pw = QGroupBox("Password Credentials")
         lay_pw = QGridLayout(grp_pw)
-        lay_pw.setSpacing(10)
+        lay_pw.setSpacing(8)
         lay_pw.addWidget(QLabel("User Open Password:"), 0, 0)
         self.txt_tab_user_pw = QLineEdit()
         self.txt_tab_user_pw.setEchoMode(QLineEdit.EchoMode.Password)
         self.txt_tab_user_pw.setPlaceholderText("Required to view the document")
         lay_pw.addWidget(self.txt_tab_user_pw, 0, 1)
 
-        lay_pw.addWidget(QLabel("Owner Permissions Password:"), 1, 0)
+        lay_pw.addWidget(QLabel("Owner Password:"), 1, 0)
         self.txt_tab_owner_pw = QLineEdit()
         self.txt_tab_owner_pw.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_tab_owner_pw.setPlaceholderText("Required to change permissions (optional, defaults to open pw)")
+        self.txt_tab_owner_pw.setPlaceholderText("Optional, defaults to open pw")
         lay_pw.addWidget(self.txt_tab_owner_pw, 1, 1)
 
         self.chk_show_passwords = QCheckBox("Show Passwords")
@@ -1003,23 +1189,108 @@ class PDFManagerView(QWidget):
         grp_out = QGroupBox("Output File Destination")
         lay_out = QHBoxLayout(grp_out)
         self.txt_protect_out = QLineEdit()
-        self.txt_protect_out.setPlaceholderText("Output PDF path (leave blank for automatic _protected.pdf)...")
+        self.txt_protect_out.setPlaceholderText("Output PDF path (prompts if blank)...")
         lay_out.addWidget(self.txt_protect_out, stretch=1)
         btn_browse_out = QPushButton("Choose...")
         btn_browse_out.clicked.connect(self._browse_protect_out)
         lay_out.addWidget(btn_browse_out)
         card_layout.addWidget(grp_out)
 
+        card_layout.addStretch()
+
         # Run action
         btn_run_protect = QPushButton("🔒 Apply AES-256 Protection")
         btn_run_protect.setProperty("class", "primaryButton")
-        btn_run_protect.setMinimumHeight(42)
+        btn_run_protect.setMinimumHeight(40)
         btn_run_protect.setStyleSheet("font-size: 13px; font-weight: 700;")
         btn_run_protect.clicked.connect(self._execute_protect_tab)
         card_layout.addWidget(btn_run_protect)
+        splitter.addWidget(card)
 
-        layout.addWidget(card)
-        layout.addStretch()
+        # --- Right Pane: Unlock / Remove PDF Password ---
+        unprot_card = QFrame()
+        unprot_card.setObjectName("paneUnprotect")
+        unprot_card.setStyleSheet("""
+            #paneUnprotect {
+                background-color: #181a22;
+                border: 1px solid #2b2f3c;
+                border-radius: 10px;
+            }
+            #paneUnprotect QLabel, #paneUnprotect QCheckBox {
+                border: none;
+                background: transparent;
+            }
+        """)
+        unprot_layout = QVBoxLayout(unprot_card)
+        unprot_layout.setContentsMargins(16, 14, 16, 14)
+        unprot_layout.setSpacing(12)
+
+        uh_box = QHBoxLayout()
+        u_icon = QLabel("🔓")
+        u_icon.setStyleSheet("font-size: 22px;")
+        uh_box.addWidget(u_icon)
+        uh_text = QVBoxLayout()
+        ut_lbl = QLabel("Remove PDF Password (Unlock)")
+        ut_lbl.setStyleSheet("font-size: 15px; font-weight: 700; color: #34d399;")
+        us_lbl = QLabel("Decrypt a password-protected PDF and save an unlocked copy.")
+        us_lbl.setStyleSheet("color: #94a3b8; font-size: 11.5px;")
+        uh_text.addWidget(ut_lbl)
+        uh_text.addWidget(us_lbl)
+        uh_box.addLayout(uh_text)
+        uh_box.addStretch()
+        unprot_layout.addLayout(uh_box)
+
+        grp_u_src = QGroupBox("Protected PDF File")
+        lay_u_src = QHBoxLayout(grp_u_src)
+        self.txt_unprotect_file = QLineEdit()
+        self.txt_unprotect_file.setPlaceholderText("Select encrypted PDF to unlock...")
+        if self._get_first_doc_path():
+            self.txt_unprotect_file.setText(self._get_first_doc_path())
+        lay_u_src.addWidget(self.txt_unprotect_file, stretch=1)
+        btn_u_src = QPushButton("Browse...")
+        btn_u_src.clicked.connect(self._browse_unprotect_file)
+        lay_u_src.addWidget(btn_u_src)
+        unprot_layout.addWidget(grp_u_src)
+
+        grp_u_pw = QGroupBox("Decryption Password")
+        lay_u_pw = QGridLayout(grp_u_pw)
+        lay_u_pw.setSpacing(8)
+        lay_u_pw.addWidget(QLabel("Current Password:"), 0, 0)
+        self.txt_unprotect_pw = QLineEdit()
+        self.txt_unprotect_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_unprotect_pw.setPlaceholderText("Enter PDF password (leave blank if owner-only lock)")
+        lay_u_pw.addWidget(self.txt_unprotect_pw, 0, 1)
+
+        self.chk_show_unprotect_pw = QCheckBox("Show Password")
+        self.chk_show_unprotect_pw.toggled.connect(
+            lambda show: self.txt_unprotect_pw.setEchoMode(QLineEdit.EchoMode.Normal if show else QLineEdit.EchoMode.Password)
+        )
+        lay_u_pw.addWidget(self.chk_show_unprotect_pw, 1, 1)
+        unprot_layout.addWidget(grp_u_pw)
+
+        grp_u_out = QGroupBox("Unlocked Output Destination")
+        lay_u_out = QHBoxLayout(grp_u_out)
+        self.txt_unprotect_out = QLineEdit()
+        self.txt_unprotect_out.setPlaceholderText("Output unlocked PDF path (prompts if blank)...")
+        lay_u_out.addWidget(self.txt_unprotect_out, stretch=1)
+        btn_u_out = QPushButton("Choose...")
+        btn_u_out.clicked.connect(self._browse_unprotect_out)
+        lay_u_out.addWidget(btn_u_out)
+        unprot_layout.addWidget(grp_u_out)
+
+        unprot_layout.addStretch()
+
+        btn_run_unprotect = QPushButton("🔓 Remove Password && Unlock PDF")
+        btn_run_unprotect.setMinimumHeight(40)
+        btn_run_unprotect.setStyleSheet(
+            "background-color: #059669; color: #ffffff; border: none; border-radius: 7px; font-size: 13px; font-weight: 700;"
+        )
+        btn_run_unprotect.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_run_unprotect.clicked.connect(self._execute_unprotect_tab)
+        unprot_layout.addWidget(btn_run_unprotect)
+        splitter.addWidget(unprot_card)
+
+        layout.addWidget(splitter, stretch=1)
 
     def _browse_protect_file(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(self, "Select PDF to Protect", "", "PDF Files (*.pdf)")
@@ -1052,7 +1323,10 @@ class PDFManagerView(QWidget):
         out = self.txt_protect_out.text().strip()
         if not out:
             src_p = Path(src)
-            out = str(src_p.parent / f"{src_p.stem}_protected.pdf")
+            default_out = str(src_p.parent / f"{src_p.stem}_protected.pdf")
+            out, _ = QFileDialog.getSaveFileName(self, "Save Protected PDF As", default_out, "PDF Files (*.pdf)")
+            if not out:
+                return
             self.txt_protect_out.setText(out)
 
         allow_print = self.chk_tab_allow_print.isChecked()
@@ -1085,6 +1359,7 @@ class PDFManagerView(QWidget):
                 "Protection Applied",
                 f"Document successfully encrypted with AES-256!\n\nSaved to: {out}"
             )
+            self.show_output_preview(out, password=user_pw)
 
         def _on_error(err):
             self.progress_card.set_error(str(err))
@@ -1092,7 +1367,62 @@ class PDFManagerView(QWidget):
 
         worker = TaskWorker(_worker_task)
         worker.signals.progress.connect(self.progress_card.update_progress)
-        worker.signals.result.connect(_on_success)
+        worker.signals.finished.connect(_on_success)
+        worker.signals.error.connect(lambda err, tb: _on_error(err))
+        self.thread_pool.start(worker)
+
+    def _browse_unprotect_file(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Protected PDF", "", "PDF Files (*.pdf)")
+        if file_path:
+            self.txt_unprotect_file.setText(file_path)
+
+    def _browse_unprotect_out(self) -> None:
+        initial = self.txt_unprotect_out.text() or ""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Unlocked PDF As", initial, "PDF Files (*.pdf)")
+        if file_path:
+            self.txt_unprotect_out.setText(file_path)
+
+    def _execute_unprotect_tab(self) -> None:
+        src = self.txt_unprotect_file.text().strip()
+        if not src or not Path(src).is_file():
+            QMessageBox.warning(self, "Invalid File", "Please select a valid protected PDF file.")
+            return
+
+        password = self.txt_unprotect_pw.text()
+        out = self.txt_unprotect_out.text().strip()
+        if not out:
+            src_p = Path(src)
+            default_out = str(src_p.parent / f"{src_p.stem}_unlocked.pdf")
+            out, _ = QFileDialog.getSaveFileName(self, "Save Unlocked PDF As", default_out, "PDF Files (*.pdf)")
+            if not out:
+                return
+            self.txt_unprotect_out.setText(out)
+
+        self.progress_card.start_task(f"Removing password from {Path(src).name}...")
+
+        def _on_success(res: str) -> None:
+            self.progress_card.complete_task("PDF password removed!")
+            self.db.log_operation(
+                module="PDF Tools",
+                action="Remove PDF Password",
+                input_summary=Path(src).name,
+                output_file=res,
+                status="success",
+            )
+            QMessageBox.information(
+                self,
+                "Password Removed",
+                f"PDF unlocked successfully!\n\nSaved to: {res}",
+            )
+            self.show_output_preview(res)
+
+        def _on_error(err: str, tb: str) -> None:
+            self.progress_card.fail_task(str(err))
+            QMessageBox.critical(self, "Unlock Failed", f"Could not remove PDF password:\n{err}")
+
+        worker = TaskWorker(PDFEngine.remove_password, src, out, password)
+        worker.signals.progress.connect(self.progress_card.update_progress)
+        worker.signals.finished.connect(_on_success)
         worker.signals.error.connect(_on_error)
         self.thread_pool.start(worker)
 
@@ -1153,7 +1483,7 @@ class PDFManagerView(QWidget):
                         pct = int(((doc_idx * 100) + ((p_i + 1) / max(page_count, 1) * 100)) / (len(valid_paths) * 100) * 100)
                         progress_callback(pct, f"Loading {doc_name} — page {p_i + 1}/{page_count}...")
 
-                    thumb_bytes = PDFEngine.render_page_thumbnail(file_p, p_i, target_width=200)
+                    thumb_bytes = PDFEngine.render_page_thumbnail(file_p, p_i, target_width=280)
                     new_pages.append({
                         "doc_id": curr_doc_id,
                         "doc_name": doc_name,
@@ -1195,8 +1525,11 @@ class PDFManagerView(QWidget):
 
         self._refresh_chips()
         self._refresh_thumbnail_grid()
+        self._refresh_remover_grid()
         self._update_export_summary()
         self._refresh_editor_canvas()
+        if new_docs:
+            self.show_input_preview(new_docs[0]["file_path"])
 
     def _remove_document(self, doc_id: int) -> None:
         """Remove an entire document and its pages from the workspace."""
@@ -1208,6 +1541,7 @@ class PDFManagerView(QWidget):
         else:
             self._refresh_chips()
             self._refresh_thumbnail_grid()
+            self._refresh_remover_grid()
             self._update_export_summary()
             self._refresh_editor_canvas()
 
@@ -1215,11 +1549,18 @@ class PDFManagerView(QWidget):
         """Reset workspace completely."""
         self.loaded_documents.clear()
         self.pages_data.clear()
+        self._undo_stack.clear()
+        self._update_undo_buttons()
 
         for w in self.thumbnail_widgets:
             w.setParent(None)
             w.deleteLater()
         self.thumbnail_widgets.clear()
+
+        for w in self.remover_widgets:
+            w.setParent(None)
+            w.deleteLater()
+        self.remover_widgets.clear()
 
         # Clear chips
         while self.chips_layout.count():
@@ -1231,6 +1572,9 @@ class PDFManagerView(QWidget):
         self.organizer_toolbar.hide()
         self.thumbnail_scroll.hide()
         self.studio_drop.show()
+        self.remover_scroll.hide()
+        self.remover_drop.show()
+        self.lbl_remover_count.setText("0 pages")
 
         self.editor_total_pages = 0
         self.editor_current_page = 0
@@ -1355,6 +1699,121 @@ class PDFManagerView(QWidget):
             w.set_selected(not w.is_selected())
         self._update_export_summary()
 
+    def _push_undo_state(self) -> None:
+        """Save a shallow-copied snapshot of pages_data onto the undo stack."""
+        snapshot = [dict(p) for p in self.pages_data]
+        self._undo_stack.append(snapshot)
+        if len(self._undo_stack) > 30:
+            self._undo_stack.pop(0)
+        self._update_undo_buttons()
+
+    def _update_undo_buttons(self) -> None:
+        count = len(self._undo_stack)
+        enabled = count > 0
+        label = f"↩️ Undo ({count})" if count > 0 else "↩️ Undo"
+        if hasattr(self, "btn_undo_studio"):
+            self.btn_undo_studio.setEnabled(enabled)
+            self.btn_undo_studio.setText(label)
+        if hasattr(self, "btn_undo_remover"):
+            self.btn_undo_remover.setEnabled(enabled)
+            self.btn_undo_remover.setText(label)
+
+    def undo_last_action(self) -> None:
+        """Restore the previous page list snapshot from the undo stack."""
+        if not self._undo_stack:
+            return
+        self.pages_data = self._undo_stack.pop()
+        self._update_undo_buttons()
+        self._refresh_thumbnail_grid()
+        self._refresh_remover_grid()
+        self._update_export_summary()
+        self._refresh_editor_canvas()
+
+    def _refresh_remover_grid(self) -> None:
+        """Redraw large, high-visibility page cards in the segregated Page Remover tab."""
+        prev_sel = [w.is_selected() for w in self.remover_widgets]
+        for w in self.remover_widgets:
+            w.setParent(None)
+            w.deleteLater()
+        self.remover_widgets.clear()
+
+        if not self.pages_data:
+            self.remover_scroll.hide()
+            self.remover_drop.show()
+            self.lbl_remover_count.setText("0 pages")
+            return
+
+        self.remover_drop.hide()
+        self.remover_scroll.show()
+        self.lbl_remover_count.setText(f"{len(self.pages_data)} page(s)")
+
+        card_w, card_h = 215, 300
+        container_w = max(self.remover_scroll.viewport().width(), 680)
+        cols = max(1, container_w // (card_w + 16))
+
+        for i, item in enumerate(self.pages_data):
+            row = i // cols
+            col = i % cols
+            doc_label = f"Doc {item['doc_id']}" if len(self.loaded_documents) > 1 else ""
+            card = ThumbnailCard(
+                page_index=i,
+                page_number=i + 1,
+                pixmap_bytes=item["pixmap_bytes"],
+                card_width=card_w,
+                card_height=card_h,
+                doc_label=doc_label,
+                doc_color=item.get("doc_color", "#60a5fa"),
+            )
+            card.inspect_requested.connect(self._open_large_preview)
+            card.rotate_requested.connect(self._on_card_rotate)
+            card.delete_requested.connect(self._on_card_delete)
+            card.move_left_requested.connect(self._on_card_move_left)
+            card.move_right_requested.connect(self._on_card_move_right)
+            if i < len(prev_sel):
+                card.set_selected(prev_sel[i])
+            self.remover_grid.addWidget(card, row, col)
+            self.remover_widgets.append(card)
+
+    def _remover_select_all(self) -> None:
+        for w in self.remover_widgets:
+            w.set_selected(True)
+
+    def _remover_deselect_all(self) -> None:
+        for w in self.remover_widgets:
+            w.set_selected(False)
+
+    def _remover_remove_checked(self) -> None:
+        selected_indices = {i for i, w in enumerate(self.remover_widgets) if w.is_selected()}
+        if not selected_indices:
+            QMessageBox.information(self, "No Pages Selected", "Please select pages to remove or click the ✕ button on any page.")
+            return
+        self._push_undo_state()
+        self.pages_data = [p for i, p in enumerate(self.pages_data) if i not in selected_indices]
+        self._refresh_thumbnail_grid()
+        self._refresh_remover_grid()
+        self._update_export_summary()
+        self._refresh_editor_canvas()
+
+    def _execute_export_cleaned_pdf(self) -> None:
+        if not self.pages_data:
+            QMessageBox.warning(self, "No Pages", "No pages remaining to export.")
+            return
+        default_dir = str(Path(self.loaded_documents[0]["file_path"]).parent) if self.loaded_documents else ""
+        default_name = f"{Path(self.loaded_documents[0]['file_path']).stem}_cleaned.pdf" if self.loaded_documents else "cleaned_document.pdf"
+        out_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Cleaned PDF", str(Path(default_dir) / default_name) if default_dir else default_name, "PDF Files (*.pdf)"
+        )
+        if not out_path:
+            return
+        self.progress_card.start_task("Exporting cleaned PDF...")
+        worker = TaskWorker(PDFEngine.assemble_pdf, pages_spec=list(self.pages_data), output_path=out_path)
+        worker.signals.progress.connect(self.progress_card.update_progress)
+        worker.signals.finished.connect(
+            lambda res: self._on_operation_done("Cleaned PDF Saved", f"Saved {len(self.pages_data)} page(s) to:\n{out_path}", out_path)
+        )
+        worker.signals.error.connect(lambda err, tb: self._on_worker_error("Export Failed", err))
+        self.thread_pool.start(worker)
+
     def _remove_selected_pages(self) -> None:
         """Remove all checked pages from the assembled document."""
         selected_indices = {i for i, w in enumerate(self.thumbnail_widgets) if w.is_selected()}
@@ -1362,12 +1821,12 @@ class PDFManagerView(QWidget):
             QMessageBox.information(self, "No Pages Selected", "Please select at least one page using the checkboxes to remove.")
             return
 
+        self._push_undo_state()
         self.pages_data = [p for i, p in enumerate(self.pages_data) if i not in selected_indices]
-        if not self.pages_data:
-            self._clear_studio()
-        else:
-            self._refresh_thumbnail_grid()
-            self._refresh_editor_canvas()
+        self._refresh_thumbnail_grid()
+        self._refresh_remover_grid()
+        self._update_export_summary()
+        self._refresh_editor_canvas()
 
     def _rotate_selected_pages(self) -> None:
         """Rotate checked pages 90 degrees."""
@@ -1377,38 +1836,34 @@ class PDFManagerView(QWidget):
 
     def _on_card_rotate(self, index: int) -> None:
         if 0 <= index < len(self.pages_data):
+            self._push_undo_state()
             self.pages_data[index]["rotation"] = (self.pages_data[index].get("rotation", 0) + 90) % 360
-            px = QPixmap()
-            px.loadFromData(self.pages_data[index]["pixmap_bytes"])
-            transform = px.transformed(px.trueMatrix(px.createHeuristicMask(), 90))
-            if index < len(self.thumbnail_widgets):
-                scaled = transform.scaled(
-                    max(self.thumbnail_card_w - 24, 120),
-                    max(self.thumbnail_card_h - 75, 140),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.thumbnail_widgets[index].lbl_image.setPixmap(scaled)
+            self._refresh_thumbnail_grid()
+            self._refresh_remover_grid()
 
     def _on_card_delete(self, index: int) -> None:
-        """Remove single page from workspace."""
+        """Remove single page from workspace (undoable)."""
         if 0 <= index < len(self.pages_data):
+            self._push_undo_state()
             del self.pages_data[index]
-            if not self.pages_data:
-                self._clear_studio()
-            else:
-                self._refresh_thumbnail_grid()
-                self._refresh_editor_canvas()
+            self._refresh_thumbnail_grid()
+            self._refresh_remover_grid()
+            self._update_export_summary()
+            self._refresh_editor_canvas()
 
     def _on_card_move_left(self, index: int) -> None:
         if index > 0:
+            self._push_undo_state()
             self.pages_data[index - 1], self.pages_data[index] = self.pages_data[index], self.pages_data[index - 1]
             self._refresh_thumbnail_grid()
+            self._refresh_remover_grid()
 
     def _on_card_move_right(self, index: int) -> None:
         if index < len(self.pages_data) - 1:
+            self._push_undo_state()
             self.pages_data[index + 1], self.pages_data[index] = self.pages_data[index], self.pages_data[index + 1]
             self._refresh_thumbnail_grid()
+            self._refresh_remover_grid()
 
     def _update_export_summary(self) -> None:
         """Update live counts on right-hand Ready panel."""
@@ -1586,7 +2041,13 @@ class PDFManagerView(QWidget):
         self.progress_card.start_task("Splitting Workspace PDF by Ranges...")
         worker = TaskWorker(PDFEngine.split_pdf_by_ranges, temp_doc, ranges_str, out_dir)
         worker.signals.progress.connect(self.progress_card.update_progress)
-        worker.signals.finished.connect(lambda files: self._on_operation_done("Split Complete", f"Created {len(files)} split files in {out_dir}."))
+        worker.signals.finished.connect(
+            lambda files: self._on_operation_done(
+                "Split Complete",
+                f"Created {len(files)} split files in {out_dir}.",
+                files[0] if files else None,
+            )
+        )
         worker.signals.error.connect(lambda err, tb: self._on_worker_error("Split Failed", err))
         self.thread_pool.start(worker)
 
@@ -1606,7 +2067,13 @@ class PDFManagerView(QWidget):
         self.progress_card.start_task("Splitting Every N Pages...")
         worker = TaskWorker(PDFEngine.split_pdf_by_chunks, temp_doc, chunk_size, out_dir)
         worker.signals.progress.connect(self.progress_card.update_progress)
-        worker.signals.finished.connect(lambda files: self._on_operation_done("Split Complete", f"Generated {len(files)} files."))
+        worker.signals.finished.connect(
+            lambda files: self._on_operation_done(
+                "Split Complete",
+                f"Generated {len(files)} files.",
+                files[0] if files else None,
+            )
+        )
         worker.signals.error.connect(lambda err, tb: self._on_worker_error("Split Failed", err))
         self.thread_pool.start(worker)
 
@@ -1783,6 +2250,8 @@ class PDFManagerView(QWidget):
     # =========================================================================
     def _on_operation_done(self, title: str, message: str, file_path: Optional[str] = None) -> None:
         self.progress_card.complete_task(message)
+        if file_path and Path(file_path).exists():
+            self.show_output_preview(file_path)
         box = QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(message)
@@ -1812,29 +2281,34 @@ class PDFManagerView(QWidget):
 
         # Header card
         header_card = QFrame()
-        header_card.setProperty("class", "cardFrame")
+        header_card.setObjectName("signHeaderCard")
         header_card.setStyleSheet("""
-            QFrame {
-                background-color: #151821;
-                border: 1px solid #1e293b;
-                border-radius: 8px;
-                padding: 12px;
+            #signHeaderCard {
+                background-color: #181a22;
+                border: 1px solid #2b2f3c;
+                border-radius: 10px;
+            }
+            #signHeaderCard QLabel {
+                border: none;
+                background: transparent;
             }
         """)
         h_lay = QHBoxLayout(header_card)
+        h_lay.setContentsMargins(16, 14, 16, 14)
         h_text = QVBoxLayout()
+        h_text.setSpacing(4)
         lbl_t = QLabel("🔏 Cryptographic PDF Digital Signatures & Validation")
-        lbl_t.setStyleSheet("font-size: 15px; font-weight: bold; color: #60a5fa;")
+        lbl_t.setStyleSheet("font-size: 15px; font-weight: bold; color: #60cdff;")
         lbl_d = QLabel("Verify PAdES / PKCS#7 signatures, detect document modifications, and sign files with X.509 certificates.")
-        lbl_d.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        lbl_d.setStyleSheet("color: #9ca3af; font-size: 12px;")
         h_text.addWidget(lbl_t)
         h_text.addWidget(lbl_d)
         h_lay.addLayout(h_text, stretch=1)
 
         btn_open_full_suite = QPushButton("🚀 Open Full Signature Center...")
-        btn_open_full_suite.setProperty("class", "primaryButton")
+        btn_open_full_suite.setProperty("variant", "accent")
         btn_open_full_suite.setStyleSheet(
-            "background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
+            "background-color: #0078d4; color: #ffffff; border: none; font-weight: 600; padding: 8px 16px; border-radius: 7px;"
         )
         btn_open_full_suite.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_open_full_suite.clicked.connect(self._open_digital_signature_suite)
@@ -1843,17 +2317,39 @@ class PDFManagerView(QWidget):
 
         # Splitter for Verifier (Left) and Signer (Right)
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(10)
 
         # --- Left: Quick Signature Verifier ---
         pane_verify = QFrame()
-        pane_verify.setProperty("class", "cardFrame")
-        pane_verify.setStyleSheet("background-color: #181a20; border: 1px solid #282a32; border-radius: 6px; padding: 10px;")
+        pane_verify.setObjectName("paneVerify")
+        pane_verify.setStyleSheet("""
+            #paneVerify {
+                background-color: #181a22;
+                border: 1px solid #2b2f3c;
+                border-radius: 10px;
+            }
+            #paneVerify QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
         v_lay = QVBoxLayout(pane_verify)
-        v_lay.setSpacing(8)
+        v_lay.setContentsMargins(16, 14, 16, 14)
+        v_lay.setSpacing(10)
 
         lbl_v_title = QLabel("🔍 Signature Inspector & Tamper Check")
-        lbl_v_title.setStyleSheet("font-weight: bold; color: #e2e8f0; font-size: 13px;")
+        lbl_v_title.setStyleSheet("font-weight: 700; color: #ffffff; font-size: 13.5px;")
         v_lay.addWidget(lbl_v_title)
+
+        lbl_v_hint = QLabel("Uses the public key embedded in the signing certificate — no private key or certificate upload needed.")
+        lbl_v_hint.setWordWrap(True)
+        lbl_v_hint.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        v_lay.addWidget(lbl_v_hint)
+
+        self.lbl_tab_net_status = QLabel("● Checking network status...")
+        self.lbl_tab_net_status.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        v_lay.addWidget(self.lbl_tab_net_status)
+        self._update_tab_network_status()
 
         row_v_file = QHBoxLayout()
         self.txt_tab_verify_file = QLineEdit()
@@ -1865,13 +2361,13 @@ class PDFManagerView(QWidget):
         btn_browse_v.clicked.connect(self._browse_tab_verify_file)
         row_v_file.addWidget(btn_browse_v)
         btn_do_verify = QPushButton("Verify")
-        btn_do_verify.setStyleSheet("background-color: #0369a1; color: white; font-weight: 600; padding: 4px 10px;")
+        btn_do_verify.setStyleSheet("background-color: #0284c7; color: white; border: none; border-radius: 7px; font-weight: 600; padding: 7px 14px;")
         btn_do_verify.clicked.connect(self._execute_tab_verify)
         row_v_file.addWidget(btn_do_verify)
         v_lay.addLayout(row_v_file)
 
         self.lbl_tab_verify_banner = QLabel("No document verified yet.")
-        self.lbl_tab_verify_banner.setStyleSheet("background-color: #1e222b; border: 1px solid #334155; border-radius: 4px; padding: 8px; color: #cbd5e1; font-weight: 500;")
+        self.lbl_tab_verify_banner.setStyleSheet("background-color: #202430; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: #cbd5e1; font-weight: 500;")
         self.lbl_tab_verify_banner.setWordWrap(True)
         v_lay.addWidget(self.lbl_tab_verify_banner)
 
@@ -1880,18 +2376,30 @@ class PDFManagerView(QWidget):
         self.table_tab_signatures.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table_tab_signatures.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table_tab_signatures.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_tab_signatures.verticalHeader().setVisible(False)
         v_lay.addWidget(self.table_tab_signatures, stretch=1)
         splitter.addWidget(pane_verify)
 
         # --- Right: Quick Signer ---
         pane_sign = QFrame()
-        pane_sign.setProperty("class", "cardFrame")
-        pane_sign.setStyleSheet("background-color: #181a20; border: 1px solid #282a32; border-radius: 6px; padding: 10px;")
+        pane_sign.setObjectName("paneSign")
+        pane_sign.setStyleSheet("""
+            #paneSign {
+                background-color: #181a22;
+                border: 1px solid #2b2f3c;
+                border-radius: 10px;
+            }
+            #paneSign QLabel, #paneSign QCheckBox {
+                border: none;
+                background: transparent;
+            }
+        """)
         s_lay = QVBoxLayout(pane_sign)
-        s_lay.setSpacing(8)
+        s_lay.setContentsMargins(16, 14, 16, 14)
+        s_lay.setSpacing(10)
 
         lbl_s_title = QLabel("✍️ Direct Digital Signer")
-        lbl_s_title.setStyleSheet("font-weight: bold; color: #e2e8f0; font-size: 13px;")
+        lbl_s_title.setStyleSheet("font-weight: 700; color: #ffffff; font-size: 13.5px;")
         s_lay.addWidget(lbl_s_title)
 
         row_s_in = QHBoxLayout()
@@ -1996,6 +2504,7 @@ class PDFManagerView(QWidget):
         )
         if path:
             self.txt_tab_verify_file.setText(path)
+            self.show_input_preview(path)
             self._execute_tab_verify()
 
     def _browse_tab_sign_in(self) -> None:
@@ -2013,14 +2522,37 @@ class PDFManagerView(QWidget):
             self.txt_tab_sign_cert.setText(path)
             self.db.set_setting("last_signing_cert", path)
 
+    def _update_tab_network_status(self) -> None:
+        net = PDFEngine.check_online_cert_status(timeout=0.5)
+        if net["online"]:
+            self.lbl_tab_net_status.setText(f"🟢 {net['status_text']}")
+            self.lbl_tab_net_status.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 600;")
+        else:
+            self.lbl_tab_net_status.setText(f"🟡 {net['status_text']}")
+            self.lbl_tab_net_status.setStyleSheet("color: #fbbf24; font-size: 11px; font-weight: 600;")
+
     def _execute_tab_verify(self) -> None:
         file_path = self.txt_tab_verify_file.text().strip()
         if not file_path or not Path(file_path).is_file():
             QMessageBox.warning(self, "Invalid File", "Please select a valid PDF file.")
             return
 
+        self._update_tab_network_status()
+
+        password: Optional[str] = None
+        if PDFEngine.is_pdf_encrypted(file_path):
+            pwd, ok = QInputDialog.getText(
+                self,
+                "Encrypted PDF",
+                "This PDF is password-protected.\nEnter the PDF password to verify signatures:",
+                QLineEdit.EchoMode.Password,
+            )
+            if not ok:
+                return
+            password = pwd
+
         try:
-            results = PDFEngine.verify_signatures(file_path)
+            results = PDFEngine.verify_signatures(file_path, password=password)
             self.table_tab_signatures.setRowCount(0)
 
             if not results:
@@ -2117,4 +2649,5 @@ class PDFManagerView(QWidget):
     def _on_signature_applied_from_dialog(self, out_path: str) -> None:
         self.db.add_recent_file(out_path, file_type="pdf")
         self.txt_tab_verify_file.setText(out_path)
+        self.show_output_preview(out_path)
         self._execute_tab_verify()

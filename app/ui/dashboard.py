@@ -44,8 +44,8 @@ class DashboardView(QWidget):
 
         content = QWidget()
         self.layout = QVBoxLayout(content)
-        self.layout.setContentsMargins(32, 28, 32, 28)
-        self.layout.setSpacing(24)
+        self.layout.setContentsMargins(28, 20, 28, 24)
+        self.layout.setSpacing(18)
 
         self._build_header()
         self._build_stats()
@@ -79,11 +79,10 @@ class DashboardView(QWidget):
         title = QLabel("Welcome to DocuTools")
         title_font = QFont("Segoe UI Variable Display", 22, QFont.Weight.Bold)
         title.setFont(title_font)
-        title.setStyleSheet("color: #ffffff;")
         header_layout.addWidget(title)
 
         subtitle = QLabel("Your unified, 100% offline document, PDF, and image processing workspace.")
-        subtitle.setStyleSheet("color: #9ca3af; font-size: 13.5px;")
+        subtitle.setStyleSheet("color: #64748b; font-size: 13.5px;")
         header_layout.addWidget(subtitle)
 
         self.layout.addLayout(header_layout)
@@ -147,7 +146,6 @@ class DashboardView(QWidget):
         sec_label = QLabel("Quick Access Tools")
         sec_font = QFont("Segoe UI Variable Display", 15, QFont.Weight.DemiBold)
         sec_label.setFont(sec_font)
-        sec_label.setStyleSheet("color: #ffffff;")
         self.layout.addWidget(sec_label)
 
         grid = QGridLayout()
@@ -202,6 +200,12 @@ class DashboardView(QWidget):
                 "fa5s.file-signature",
                 "pdf_tools:sign",
             ),
+            (
+                "File Converter",
+                "Convert PDFs to full-resolution JPG/PNG, merge images to PDF, or convert DOCX.",
+                "fa5s.exchange-alt",
+                "converter",
+            ),
         ]
 
         for idx, (title, desc, icon, page_id) in enumerate(tools):
@@ -218,7 +222,6 @@ class DashboardView(QWidget):
         sec_label = QLabel("Recent Files")
         sec_font = QFont("Segoe UI Variable Display", 15, QFont.Weight.DemiBold)
         sec_label.setFont(sec_font)
-        sec_label.setStyleSheet("color: #ffffff;")
         header_layout.addWidget(sec_label)
         header_layout.addStretch()
 

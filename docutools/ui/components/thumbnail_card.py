@@ -97,22 +97,29 @@ class ThumbnailCard(QFrame):
         self.btn_rotate.clicked.connect(lambda: self.rotate_requested.emit(self.page_index))
         top_bar.addWidget(self.btn_rotate)
 
-        # Delete button
+        # Delete button (prominent cross icon)
         self.btn_delete = QPushButton("✕")
-        self.btn_delete.setFixedSize(20, 20)
+        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_delete.setToolTip("Delete this page")
-        self.btn_delete.setStyleSheet("padding: 0; font-size: 10px; color: #ef4444;")
+        self.btn_delete.setStyleSheet(
+            "QPushButton { padding: 0; font-size: 12px; font-weight: bold; color: #ef4444; "
+            "background-color: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 5px; }"
+            "QPushButton:hover { background-color: #ef4444; color: #ffffff; border-color: #ef4444; }"
+        )
         self.btn_delete.clicked.connect(lambda: self.delete_requested.emit(self.page_index))
         top_bar.addWidget(self.btn_delete)
 
         layout.addLayout(top_bar)
 
-        # Thumbnail Image Display
+        # Thumbnail Image Display (bright paper canvas so page content is clearly visible)
         self.lbl_image = QLabel()
         self.lbl_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_image.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_image.setToolTip("Double-click or click 🔍 to view in large mode")
-        self.lbl_image.setStyleSheet("background-color: #111215; border-radius: 4px; border: 1px solid #282a30;")
+        self.lbl_image.setStyleSheet(
+            "background-color: #ffffff; border-radius: 6px; border: 1px solid #334155; padding: 2px;"
+        )
         self.set_pixmap(pixmap_bytes)
         layout.addWidget(self.lbl_image, stretch=1)
 
@@ -146,8 +153,8 @@ class ThumbnailCard(QFrame):
     def set_pixmap(self, pixmap_bytes: bytes) -> None:
         px = QPixmap()
         px.loadFromData(pixmap_bytes)
-        img_w = max(self.card_width - 24, 120)
-        img_h = max(self.card_height - 75, 140)
+        img_w = max(self.card_width - 18, 130)
+        img_h = max(self.card_height - 68, 150)
         scaled = px.scaled(img_w, img_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.lbl_image.setPixmap(scaled)
 

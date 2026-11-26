@@ -68,6 +68,12 @@ class DocuToolsMainWindow(QMainWindow):
         self.thread_pool = QThreadPool.globalInstance()
 
         self.setWindowTitle("DocuTools — Professional Document & Image Suite")
+        from docutools.core.assets import get_app_icon_path
+
+        icon_path = get_app_icon_path(ico=True)
+        if Path(icon_path).exists():
+            self.setWindowIcon(QIcon(icon_path))
+
         self.resize(
             self.settings.get("window_width", 1280),
             self.settings.get("window_height", 820),
@@ -79,6 +85,8 @@ class DocuToolsMainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central_widget = QWidget(self)
+        central_widget.setObjectName("centralWorkArea")
+        central_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setCentralWidget(central_widget)
 
         root_layout = QHBoxLayout(central_widget)
@@ -158,27 +166,32 @@ class DocuToolsMainWindow(QMainWindow):
         header_layout.setContentsMargins(28, 0, 24, 0)
         header_layout.setSpacing(16)
 
-        # Breadcrumbs
+        # Breadcrumbs & Title
+        import qtawesome as qta
+        from PySide6.QtGui import QPixmap
+        from docutools.core.assets import get_app_icon_path
+
         crumb_layout = QHBoxLayout()
-        crumb_layout.setSpacing(8)
+        crumb_layout.setSpacing(10)
+        crumb_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        app_label = QLabel("DocuTools")
-        app_label.setStyleSheet("color: #9ca3af; font-size: 11px; font-weight: 500;")
-        crumb_layout.addWidget(app_label)
-
-        chevron = QLabel("›")
-        chevron.setStyleSheet("color: #6b7280; font-size: 13px;")
-        crumb_layout.addWidget(chevron)
+        header_icon_lbl = QLabel()
+        icon_png = get_app_icon_path(ico=False)
+        if Path(icon_png).exists():
+            header_icon_lbl.setPixmap(QPixmap(icon_png).scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            header_icon_lbl.setPixmap(qta.icon("fa5s.file-pdf", color="#60cdff").pixmap(QSize(22, 22)))
+        header_icon_lbl.setStyleSheet("background: transparent; border: none;")
+        crumb_layout.addWidget(header_icon_lbl)
 
         title_box = QVBoxLayout()
         title_box.setSpacing(1)
         self.header_title = QLabel("Home Dashboard")
         self.header_title.setFont(QFont("Segoe UI Variable Display", 13, QFont.Weight.Bold))
-        self.header_title.setStyleSheet("color: #ffffff;")
         title_box.addWidget(self.header_title)
 
         self.header_sub = QLabel("Overview, stats, and quick tools")
-        self.header_sub.setStyleSheet("color: #9ca3af; font-size: 10px;")
+        self.header_sub.setStyleSheet("color: #64748b; font-size: 10.5px;")
         title_box.addWidget(self.header_sub)
         crumb_layout.addLayout(title_box)
 
@@ -186,10 +199,10 @@ class DocuToolsMainWindow(QMainWindow):
         header_layout.addStretch()
 
         # Windows 11 Pill Search Bar
-        import qtawesome as qta
         self.search_bar = QLineEdit()
         self.search_bar.setObjectName("searchBar")
         self.search_bar.setPlaceholderText("Search tools & actions (e.g. merge, compress, docx)...")
+        self.search_bar.addAction(qta.icon("fa5s.search", color="#9ca3af"), QLineEdit.ActionPosition.LeadingPosition)
         self.search_bar.setFixedWidth(300)
         self.search_bar.returnPressed.connect(self._on_search_submitted)
         header_layout.addWidget(self.search_bar)

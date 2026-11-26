@@ -630,6 +630,34 @@ class PDFEngine:
         return str(out_p)
 
     @staticmethod
+    def remove_password(
+        file_path: str | Path,
+        output_path: str | Path,
+        password: str = "",
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+    ) -> str:
+        """Remove password protection and security restrictions from a PDF."""
+        src_p = Path(file_path)
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+
+        if progress_callback:
+            progress_callback(25, "Unlocking encrypted PDF...")
+
+        try:
+            with pikepdf.open(str(src_p), password=password) as pdf:
+                if progress_callback:
+                    progress_callback(70, "Saving unlocked PDF without encryption...")
+                pdf.save(str(out_p))
+        except pikepdf.PasswordError as exc:
+            raise ValueError("Incorrect password. Please enter the valid password for this PDF.") from exc
+
+        if progress_callback:
+            progress_callback(100, "PDF password removed successfully.")
+
+        return str(out_p)
+
+    @staticmethod
     def add_annotation(
         file_path: str | Path,
         output_path: str | Path,
@@ -959,6 +987,35 @@ class PDFEngine:
             "visible": visible,
             "page_index": page_index if visible else None,
         }
+
+    @staticmethod
+    def is_pdf_encrypted(file_path: str | Path) -> bool:
+        """Return True if opening the PDF requires a user password."""
+        p = Path(file_path)
+        if not p.is_file():
+            return False
+        doc = fitz.open(str(p))
+        try:
+            return bool(doc.needs_pass)
+        finally:
+            doc.close()
+
+    @staticmethod
+    def check_online_cert_status(timeout: float = 1.0) -> Dict[str, Any]:
+        """Automatically detect network availability for online certificate checks."""
+        import socket
+
+        try:
+            with socket.create_connection(("1.1.1.1", 443), timeout=timeout):
+                return {
+                    "online": True,
+                    "status_text": "Online — Automatic certificate checks active",
+                }
+        except OSError:
+            return {
+                "online": False,
+                "status_text": "Offline — Local public-key verification active",
+            }
 
     @staticmethod
     def verify_signatures(

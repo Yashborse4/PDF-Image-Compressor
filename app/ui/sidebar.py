@@ -39,6 +39,7 @@ class SidebarWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("sidebarContainer")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(self.EXPANDED_WIDTH)
         self._is_collapsed = False
         self._anim: QPropertyAnimation | None = None
@@ -78,11 +79,10 @@ class SidebarWidget(QWidget):
         self.brand_title = QLabel("DocuTools")
         title_font = QFont("Segoe UI Variable Display", 13, QFont.Weight.Bold)
         self.brand_title.setFont(title_font)
-        self.brand_title.setStyleSheet("color: #ffffff;")
         b_text_layout.addWidget(self.brand_title)
 
         self.brand_sub = QLabel("Desktop Suite")
-        self.brand_sub.setStyleSheet("color: #9ca3af; font-size: 10px; font-weight: 500;")
+        self.brand_sub.setStyleSheet("color: #64748b; font-size: 10px; font-weight: 500;")
         b_text_layout.addWidget(self.brand_sub)
 
         brand_layout.addWidget(self.brand_text_box)
@@ -92,7 +92,7 @@ class SidebarWidget(QWidget):
         # Subtle divider
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet("background-color: #363640; max-height: 1px; margin: 4px 6px 8px 6px;")
+        divider.setStyleSheet("background-color: rgba(128, 128, 128, 0.22); max-height: 1px; margin: 4px 6px 8px 6px;")
         main_layout.addWidget(divider)
 
         # 2. Nav Buttons

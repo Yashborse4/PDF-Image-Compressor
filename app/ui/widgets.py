@@ -63,7 +63,6 @@ class FluentCard(QFrame):
             self.title_label = QLabel(title)
             title_font = QFont("Segoe UI Variable Display", 12, QFont.Weight.DemiBold)
             self.title_label.setFont(title_font)
-            self.title_label.setStyleSheet("color: #ffffff;")
             header_layout.addWidget(self.title_label)
 
         header_layout.addStretch()
@@ -78,7 +77,7 @@ class FluentCard(QFrame):
         if description:
             self.desc_label = QLabel(description)
             self.desc_label.setWordWrap(True)
-            self.desc_label.setStyleSheet("color: #9ca3af; font-size: 11.5px; line-height: 1.4;")
+            self.desc_label.setStyleSheet("color: #64748b; font-size: 11.5px; line-height: 1.4;")
             layout.addWidget(self.desc_label)
 
     def mousePressEvent(self, event) -> None:
@@ -126,18 +125,17 @@ class StatCard(QFrame):
         text_layout.setSpacing(3)
 
         self.label_widget = QLabel(label.upper())
-        self.label_widget.setStyleSheet("color: #9ca3af; font-size: 10px; font-weight: 600; letter-spacing: 0.6px;")
+        self.label_widget.setStyleSheet("color: #64748b; font-size: 10px; font-weight: 600; letter-spacing: 0.6px;")
         text_layout.addWidget(self.label_widget)
 
         self.value_widget = QLabel(value)
         v_font = QFont("Segoe UI Variable Display", 16, QFont.Weight.Bold)
         self.value_widget.setFont(v_font)
-        self.value_widget.setStyleSheet("color: #ffffff;")
         text_layout.addWidget(self.value_widget)
 
         if subtext:
             self.sub_widget = QLabel(subtext)
-            self.sub_widget.setStyleSheet("color: #888888; font-size: 10.5px;")
+            self.sub_widget.setStyleSheet("color: #64748b; font-size: 10.5px;")
             text_layout.addWidget(self.sub_widget)
 
         layout.addLayout(text_layout)
@@ -162,55 +160,65 @@ class FileDropArea(QFrame):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("FileDropArea")
         self.accepted_extensions = accepted_extensions or set()
         self.setAcceptDrops(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(130)
+        self.setMinimumHeight(112)
         self._apply_normal_style()
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(6)
 
         self.icon_lbl = QLabel()
         self.icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_lbl.setPixmap(qta.icon("fa5s.cloud-upload-alt", color="#60cdff").pixmap(QSize(40, 40)))
+        self.icon_lbl.setPixmap(qta.icon("fa5s.cloud-upload-alt", color="#60cdff").pixmap(QSize(36, 36)))
         layout.addWidget(self.icon_lbl)
 
         self.label = QLabel(prompt_text)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont("Segoe UI Variable Display", 11.5, QFont.Weight.DemiBold)
         self.label.setFont(font)
-        self.label.setStyleSheet("color: #ffffff;")
+        self.label.setStyleSheet("border: none; background: transparent;")
         layout.addWidget(self.label)
 
-        ext_text = "Supports: " + ", ".join(sorted(self.accepted_extensions)) if self.accepted_extensions else "All supported files"
+        ext_text = "Supports: " + ", ".join(sorted(self.accepted_extensions)) if self.accepted_extensions else "PDF, Word (DOCX), PNG, JPG, WebP, TIFF"
         self.ext_label = QLabel(ext_text)
         self.ext_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.ext_label.setStyleSheet("color: #9ca3af; font-size: 10.5px;")
+        self.ext_label.setStyleSheet("color: #64748b; font-size: 10.5px; border: none; background: transparent;")
         layout.addWidget(self.ext_label)
 
     def _apply_normal_style(self) -> None:
-        self.setStyleSheet(
-            "QFrame {"
-            "  border: 2px dashed #40404c;"
-            "  border-radius: 14px;"
-            "  background-color: rgba(255, 255, 255, 0.02);"
-            "}"
-            "QFrame:hover {"
-            "  border: 2px dashed #60cdff;"
-            "  background-color: rgba(96, 205, 255, 0.04);"
-            "}"
-        )
+        self.setStyleSheet("")
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            from PySide6.QtWidgets import QFileDialog
+            files, _ = QFileDialog.getOpenFileNames(
+                self,
+                "Select Files to Open",
+                "",
+                "Supported Files (*.pdf *.docx *.doc *.png *.jpg *.jpeg *.webp *.bmp *.tiff)",
+            )
+            if files:
+                self.files_dropped.emit(files)
+        super().mousePressEvent(event)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             self.setStyleSheet(
-                "border: 2px dashed #60cdff;"
-                "border-radius: 14px;"
-                "background-color: rgba(96, 205, 255, 0.10);"
+                "#FileDropArea {"
+                "  border: 2px dashed #60cdff;"
+                "  border-radius: 14px;"
+                "  background-color: rgba(96, 205, 255, 0.12);"
+                "}"
+                "#FileDropArea QLabel {"
+                "  border: none;"
+                "  background: transparent;"
+                "}"
             )
 
     def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
